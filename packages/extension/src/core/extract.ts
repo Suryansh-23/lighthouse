@@ -16,6 +16,12 @@ export interface AddressOccurrence {
   range: vscode.Range;
 }
 
+export interface AddressMatch {
+  raw: string;
+  normalized?: Address;
+  range: vscode.Range;
+}
+
 export function extractAddressesFromText(text: string): Address[] {
   ADDRESS_REGEX.lastIndex = 0;
   const matches = text.matchAll(ADDRESS_REGEX);
@@ -50,22 +56,24 @@ export function extractAddressAtPosition(
 }
 
 export function extractAddressOccurrences(doc: vscode.TextDocument): AddressOccurrence[] {
+  return extractAddressMatches(doc)
+    .filter(match => match.normalized)
+    .map(match => ({ address: match.normalized as Address, range: match.range }));
+}
+
+export function extractAddressMatches(doc: vscode.TextDocument): AddressMatch[] {
   const text = doc.getText();
-  const occurrences: AddressOccurrence[] = [];
+  const matches: AddressMatch[] = [];
 
   ADDRESS_REGEX.lastIndex = 0;
   for (const match of text.matchAll(ADDRESS_REGEX)) {
     const raw = match[0];
     const index = match.index ?? 0;
     const normalized = normalizeAddress(raw);
-    if (!normalized) {
-      continue;
-    }
-
     const start = doc.positionAt(index);
     const end = doc.positionAt(index + raw.length);
-    occurrences.push({ address: normalized, range: new vscode.Range(start, end) });
+    matches.push({ raw, normalized, range: new vscode.Range(start, end) });
   }
 
-  return occurrences;
+  return matches;
 }

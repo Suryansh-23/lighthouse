@@ -19,6 +19,7 @@ import { registerCodeLens } from "./ui/codelens";
 import { registerCommands } from "./ui/commands";
 import { registerHover } from "./ui/hover";
 import { InspectorController } from "./ui/inspector";
+import { registerDiagnostics } from "./ui/diagnostics";
 
 export async function activate(context: vscode.ExtensionContext) {
   const settings = getSettings();
@@ -50,6 +51,7 @@ export async function activate(context: vscode.ExtensionContext) {
   registerHover(context, { cache, resolver });
   registerCodeLens(context, { cache });
   registerAddressBookView(context, addressBook);
+  registerDiagnostics(context);
 
   if (!settings.security.respectWorkspaceTrust || vscode.workspace.isTrusted) {
     void indexer.scanWorkspace();

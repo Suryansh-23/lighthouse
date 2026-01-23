@@ -1,3 +1,4 @@
+import * as fs from "fs";
 import * as path from "path";
 
 import Mocha from "mocha";
@@ -5,11 +6,18 @@ import Mocha from "mocha";
 export function run(): Promise<void> {
   const mocha = new Mocha({
     ui: "tdd",
-    color: true
+    color: true,
   });
 
-  const testFile = path.resolve(__dirname, "extension.test.js");
-  mocha.addFile(testFile);
+  const suiteDir = __dirname;
+  const testFiles = fs
+    .readdirSync(suiteDir)
+    .filter(file => file.endsWith(".test.js"))
+    .map(file => path.resolve(suiteDir, file));
+
+  for (const file of testFiles) {
+    mocha.addFile(file);
+  }
 
   return new Promise((resolve, reject) => {
     mocha.run(failures => {

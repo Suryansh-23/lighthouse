@@ -1,16 +1,26 @@
 import * as vscode from "vscode";
 
-export function activate(context: vscode.ExtensionContext) {
-  const inspectAddress = vscode.commands.registerCommand(
-    "lighthouse.inspectAddress",
-    async () => {
-      void vscode.window.showInformationMessage(
-        "Lighthouse: Inspect Address is not implemented yet.",
-      );
-    },
-  );
+import { getSettings } from "./core/settings";
+import { CacheStore } from "./data/cache-store";
+import { AddressResolver } from "./domain/resolve";
+import { registerCommands } from "./ui/commands";
+import { registerHover } from "./ui/hover";
 
-  context.subscriptions.push(inspectAddress);
+export async function activate(context: vscode.ExtensionContext) {
+  const settings = getSettings();
+  if (!settings.enabled) {
+    return;
+  }
+
+  const cache = new CacheStore(context, settings.cache.ttlSeconds);
+  await cache.init();
+
+  const resolver = new AddressResolver(cache);
+
+  registerCommands(context, { cache });
+  registerHover(context, { cache, resolver });
 }
 
-export function deactivate() {}
+export function deactivate() {
+  return undefined;
+}

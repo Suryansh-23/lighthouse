@@ -19,6 +19,7 @@ Purpose: onboarding notes and working rules for agents in this repo.
   - `packages/shared` (types/schemas)
   - `packages/webview` (inspector UI build output placeholder)
 - Root tooling: `tsconfig.base.json`, ESLint, Prettier, GitHub Actions CI.
+- Extension structure: `src/core` (settings/extraction), `src/data` (cache/rpc), `src/domain` (resolver), `src/ui` (hover/commands).
 
 ## Commands (build/lint/test)
 - Install: `pnpm install`
@@ -112,6 +113,10 @@ Purpose: onboarding notes and working rules for agents in this repo.
 - Extension tests live in `packages/extension/src/test` and run via `@vscode/test-electron`.
 - Add tests alongside features; prefer unit tests for core logic.
 - Keep tests deterministic; mock RPC/explorer/DefiLlama calls.
+
+## Phase status
+- Phase 0 complete: pnpm workspace + extension/shared/webview scaffolds.
+- Phase 1 in progress: address extraction, cache store, RPC resolver, hover provider, and commands are implemented.
 
 ## Linting and formatting
 - Follow ESLint/Prettier once added; do not hand-format against them.

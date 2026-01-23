@@ -10,20 +10,96 @@
   },
   "categories": ["Other"],
   "main": "./dist/extension.js",
-  "activationEvents": ["onCommand:lighthouse.inspectAddress"],
+  "activationEvents": [
+    "onCommand:lighthouse.inspectAddress",
+    "onCommand:lighthouse.openExplorer",
+    "onCommand:lighthouse.copyAddress",
+    "onCommand:lighthouse.addToAddressBook",
+    "onLanguage:typescript",
+    "onLanguage:javascript",
+    "onLanguage:solidity",
+    "onLanguage:json",
+    "onLanguage:yaml",
+    "onLanguage:markdown"
+  ],
   "contributes": {
     "commands": [
       {
         "command": "lighthouse.inspectAddress",
         "title": "Lighthouse: Inspect Address..."
+      },
+      {
+        "command": "lighthouse.openExplorer",
+        "title": "Lighthouse: Open Explorer"
+      },
+      {
+        "command": "lighthouse.copyAddress",
+        "title": "Lighthouse: Copy Address"
+      },
+      {
+        "command": "lighthouse.addToAddressBook",
+        "title": "Lighthouse: Add to Address Book"
       }
-    ]
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Lighthouse",
+      "properties": {
+        "lighthouse.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Lighthouse features."
+        },
+        "lighthouse.ui.hover.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable hover cards for addresses."
+        },
+        "lighthouse.chains.mode": {
+          "type": "string",
+          "enum": ["workspaceLimited", "userAll", "singleChain"],
+          "default": "workspaceLimited",
+          "description": "Chain scanning strategy."
+        },
+        "lighthouse.chains.workspaceAllowlist": {
+          "type": "array",
+          "items": { "type": "number" },
+          "default": [1, 10, 137, 42161, 8453],
+          "description": "Workspace chain allowlist."
+        },
+        "lighthouse.chains.userChains": {
+          "type": "array",
+          "default": [],
+          "description": "User-defined chain configurations."
+        },
+        "lighthouse.explorer.default": {
+          "type": "string",
+          "enum": ["routescan", "blockscout", "etherscan"],
+          "default": "routescan",
+          "description": "Default explorer for address navigation."
+        },
+        "lighthouse.explorer.openInExternalBrowser": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open explorer links in the system browser."
+        },
+        "lighthouse.cache.ttlSeconds": {
+          "type": "number",
+          "default": 86400,
+          "description": "Cache TTL in seconds."
+        }
+      }
+    }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "watch": "tsc -p tsconfig.json --watch",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "pnpm run build && node ./dist/test/runTest.js"
+  },
+  "dependencies": {
+    "@lighthouse/shared": "workspace:*",
+    "viem": "^2.19.0"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.6",

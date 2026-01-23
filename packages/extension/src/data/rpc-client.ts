@@ -1,0 +1,52 @@
+import type { ChainId } from "@lighthouse/shared";
+
+interface RpcRequest {
+  jsonrpc: "2.0";
+  id: number;
+  method: string;
+  params: unknown[];
+}
+
+interface RpcResponse<T> {
+  jsonrpc: "2.0";
+  id: number;
+  result?: T;
+  error?: { code: number; message: string };
+}
+
+export class RpcClient {
+  constructor(private readonly chainId: ChainId, private readonly rpcUrl: string) {}
+
+  async getCode(address: string, signal?: AbortSignal): Promise<string> {
+    return this.request<string>("eth_getCode", [address, "latest"], signal);
+  }
+
+  private async request<T>(method: string, params: unknown[], signal?: AbortSignal): Promise<T> {
+    const body: RpcRequest = {
+      jsonrpc: "2.0",
+      id: Date.now(),
+      method,
+      params,
+    };
+
+    const response = await fetch(this.rpcUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`RPC ${this.chainId} responded with ${response.status}`);
+    }
+
+    const data = (await response.json()) as RpcResponse<T>;
+    if (data.error) {
+      throw new Error(`RPC ${this.chainId} error: ${data.error.message}`);
+    }
+
+    return data.result as T;
+  }
+}

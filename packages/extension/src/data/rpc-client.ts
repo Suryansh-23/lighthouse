@@ -21,6 +21,31 @@ export class RpcClient {
     return this.request<string>("eth_getCode", [address, "latest"], signal);
   }
 
+  async getBalance(address: string, signal?: AbortSignal): Promise<string> {
+    return this.request<string>("eth_getBalance", [address, "latest"], signal);
+  }
+
+  async getTransactionCount(address: string, signal?: AbortSignal): Promise<string> {
+    return this.request<string>("eth_getTransactionCount", [address, "latest"], signal);
+  }
+
+  async getStorageAt(address: string, slot: string, signal?: AbortSignal): Promise<string> {
+    return this.request<string>("eth_getStorageAt", [address, slot, "latest"], signal);
+  }
+
+  async call(
+    address: string,
+    data: string,
+    signal?: AbortSignal,
+    gas?: string,
+  ): Promise<string> {
+    const params: Record<string, string> = { to: address, data };
+    if (gas) {
+      params.gas = gas;
+    }
+    return this.request<string>("eth_call", [params, "latest"], signal);
+  }
+
   private async request<T>(method: string, params: unknown[], signal?: AbortSignal): Promise<T> {
     const body: RpcRequest = {
       jsonrpc: "2.0",

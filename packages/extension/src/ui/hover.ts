@@ -63,8 +63,8 @@ function buildHoverMarkdown(address: string, resolution?: AddressResolution): vs
   if (resolution) {
     const info = pickPrimaryChain(resolution);
     if (info) {
-      const kind = info.kind === "Unknown" ? "Unknown" : info.kind;
-      md.appendMarkdown(`${info.chainName} (${info.chainId}) · ${kind}\n\n`);
+      const summary = formatSummary(info);
+      md.appendMarkdown(`${summary}\n\n`);
     }
   } else {
     md.appendMarkdown("Resolving…\n\n");
@@ -84,6 +84,23 @@ function buildHoverMarkdown(address: string, resolution?: AddressResolution): vs
   );
 
   return md;
+}
+
+function formatSummary(info: ChainAddressInfo): string {
+  const kind = info.kind === "Unknown" ? "Unknown" : info.kind;
+  const base = `${info.chainName} (${info.chainId}) · ${kind}`;
+
+  const classification = info.contract?.classification?.type;
+  if (classification) {
+    const tokenLabel = info.token?.symbol ? `${classification} (${info.token.symbol})` : classification;
+    const price = info.token?.price?.usd;
+    if (price !== undefined) {
+      return `${base} · ${tokenLabel} · $${price.toFixed(2)}`;
+    }
+    return `${base} · ${tokenLabel}`;
+  }
+
+  return base;
 }
 
 function pickPrimaryChain(resolution: AddressResolution): ChainAddressInfo | undefined {

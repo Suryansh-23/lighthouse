@@ -19,7 +19,7 @@ Purpose: onboarding notes and working rules for agents in this repo.
   - `packages/shared` (types/schemas)
   - `packages/webview` (inspector UI build output placeholder)
 - Root tooling: `tsconfig.base.json`, ESLint, Prettier, GitHub Actions CI.
-- Extension structure: `src/core` (settings/extraction), `src/data` (cache/rpc), `src/domain` (resolver), `src/ui` (hover/commands).
+- Extension structure: `src/core` (settings/extraction), `src/data` (cache/rpc), `src/domain` (resolver/enrichers/indexer), `src/ui` (hover/commands/codelens/address-book).
 
 ## Commands (build/lint/test)
 - Install: `pnpm install`
@@ -118,7 +118,8 @@ Purpose: onboarding notes and working rules for agents in this repo.
 - Phase 0 complete: pnpm workspace + extension/shared/webview scaffolds.
 - Phase 1 complete: address extraction, cache store, RPC resolver, hover provider, and commands are implemented.
 - Phase 2 complete: CodeLens, address book tree view, workspace indexer, and RPC pool rotation/cooldown.
-- Phase 3 in progress: ERC detection, explorer metadata, and DefiLlama enrichment.
+- Phase 3 complete: ERC detection, proxy heuristics, explorer metadata, and DefiLlama enrichment.
+- Phase 4 in progress: inspector webview.
 
 ## Linting and formatting
 - Follow ESLint/Prettier once added; do not hand-format against them.

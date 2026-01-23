@@ -89,6 +89,12 @@ function buildSummary(address: Address, resolution?: AddressResolution): string 
   }
 
   const kind = info.kind === "Unknown" ? "Unknown" : info.kind;
+  const classification = info.contract?.classification?.type;
+  if (classification) {
+    const tokenLabel = info.token?.symbol ? `${classification} (${info.token.symbol})` : classification;
+    return `${info.chainName} (${info.chainId}): ${kind} · ${tokenLabel}`;
+  }
+
   return `${info.chainName} (${info.chainId}): ${kind}`;
 }
 

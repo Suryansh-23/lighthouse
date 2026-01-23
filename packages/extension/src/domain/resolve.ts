@@ -3,18 +3,24 @@ import type * as vscode from "vscode";
 import type { Address, AddressResolution, ChainAddressInfo, ChainId } from "@lighthouse/shared";
 
 import { resolveChains } from "../core/chain-config";
+import { consoleLogger } from "../core/logger";
 import { getSettings } from "../core/settings";
 import { toAbortSignal } from "../core/cancellation";
 import { CacheStore } from "../data/cache-store";
 import { RpcClient } from "../data/rpc-client";
 import { RpcPool } from "../data/rpc-pool";
+import type { EnrichmentPipeline } from "./enrichment";
 
 interface ResolveOptions {
   token?: vscode.CancellationToken;
 }
 
 export class AddressResolver {
-  constructor(private readonly cache: CacheStore, private readonly rpcPool: RpcPool) {}
+  constructor(
+    private readonly cache: CacheStore,
+    private readonly rpcPool: RpcPool,
+    private readonly pipeline: EnrichmentPipeline,
+  ) {}
 
   async resolve(address: Address, options: ResolveOptions = {}): Promise<AddressResolution> {
     const cached = this.cache.get(address);
@@ -49,6 +55,18 @@ export class AddressResolver {
           isContract,
         };
         perChain[chain.chainId] = info;
+
+        await this.pipeline.run({
+          address,
+          chainId: chain.chainId,
+          chain,
+          info,
+          rpc,
+          cache: this.cache,
+          logger: consoleLogger,
+          cancel: options.token,
+          code,
+        });
         return { chainId: chain.chainId };
       } catch (error) {
         this.rpcPool.reportFailure(chain.chainId, rpcHealth.url);

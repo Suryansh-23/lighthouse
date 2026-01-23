@@ -18,6 +18,7 @@ import { registerAddressBookView } from "./ui/address-book";
 import { registerCodeLens } from "./ui/codelens";
 import { registerCommands } from "./ui/commands";
 import { registerHover } from "./ui/hover";
+import { InspectorController } from "./ui/inspector";
 
 export async function activate(context: vscode.ExtensionContext) {
   const settings = getSettings();
@@ -42,9 +43,10 @@ export async function activate(context: vscode.ExtensionContext) {
     new DefiLlamaPriceEnricher(defillamaClient),
   ]);
   const resolver = new AddressResolver(cache, rpcPool, pipeline);
+  const inspector = new InspectorController(context, { cache, resolver, addressBook });
   const indexer = new WorkspaceIndexer(addressBook);
 
-  registerCommands(context, { cache, addressBook, indexer });
+  registerCommands(context, { cache, addressBook, indexer, inspector });
   registerHover(context, { cache, resolver });
   registerCodeLens(context, { cache });
   registerAddressBookView(context, addressBook);

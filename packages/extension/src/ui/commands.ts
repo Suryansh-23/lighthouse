@@ -8,6 +8,7 @@ import { getSettings } from "../core/settings";
 import type { AddressBookStore } from "../data/address-book-store";
 import type { CacheStore } from "../data/cache-store";
 import type { WorkspaceIndexer } from "../domain/indexer";
+import type { InspectorController } from "./inspector";
 
 interface AddressCommandArgs {
   address: Address;
@@ -18,6 +19,7 @@ interface CommandDeps {
   cache: CacheStore;
   addressBook: AddressBookStore;
   indexer: WorkspaceIndexer;
+  inspector: InspectorController;
 }
 
 export function registerCommands(context: vscode.ExtensionContext, deps: CommandDeps) {
@@ -144,16 +146,7 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
     vscode.commands.registerCommand(
       "lighthouse.inspectAddress",
       async (args?: AddressCommandArgs) => {
-        if (args?.address) {
-          void vscode.window.showInformationMessage(
-            `Lighthouse: Inspector for ${args.address} is not implemented yet.`,
-          );
-          return;
-        }
-
-        void vscode.window.showInformationMessage(
-          "Lighthouse: Inspect Address is not implemented yet.",
-        );
+        await deps.inspector.open(args);
       },
     ),
   );

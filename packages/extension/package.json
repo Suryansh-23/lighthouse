@@ -71,6 +71,56 @@
         }
       ]
     },
+    "menus": {
+      "view/title": [
+        {
+          "command": "lighthouse.reindexWorkspace",
+          "when": "view == lighthouseAddressBook"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "lighthouse.openExplorer",
+          "when": "view == lighthouseAddressBook && viewItem == lighthousePinnedAddress"
+        },
+        {
+          "command": "lighthouse.openExplorer",
+          "when": "view == lighthouseAddressBook && viewItem == lighthouseIndexedAddress"
+        },
+        {
+          "command": "lighthouse.copyAddress",
+          "when": "view == lighthouseAddressBook && viewItem == lighthousePinnedAddress"
+        },
+        {
+          "command": "lighthouse.copyAddress",
+          "when": "view == lighthouseAddressBook && viewItem == lighthouseIndexedAddress"
+        },
+        {
+          "command": "lighthouse.inspectAddress",
+          "when": "view == lighthouseAddressBook && viewItem == lighthousePinnedAddress"
+        },
+        {
+          "command": "lighthouse.inspectAddress",
+          "when": "view == lighthouseAddressBook && viewItem == lighthouseIndexedAddress"
+        },
+        {
+          "command": "lighthouse.revealOccurrences",
+          "when": "view == lighthouseAddressBook && viewItem == lighthousePinnedAddress"
+        },
+        {
+          "command": "lighthouse.revealOccurrences",
+          "when": "view == lighthouseAddressBook && viewItem == lighthouseIndexedAddress"
+        },
+        {
+          "command": "lighthouse.addToAddressBook",
+          "when": "view == lighthouseAddressBook && viewItem == lighthouseIndexedAddress"
+        },
+        {
+          "command": "lighthouse.removeFromAddressBook",
+          "when": "view == lighthouseAddressBook && viewItem == lighthousePinnedAddress"
+        }
+      ]
+    },
     "configuration": {
       "type": "object",
       "title": "Lighthouse",

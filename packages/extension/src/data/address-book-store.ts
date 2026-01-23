@@ -59,6 +59,10 @@ export class AddressBookStore {
     return Array.from(this.pinned.values()).sort((a, b) => a.address.localeCompare(b.address));
   }
 
+  getPinnedEntry(address: Address): AddressBookEntry | undefined {
+    return this.pinned.get(address);
+  }
+
   getIndexedAddresses(): Address[] {
     return Array.from(this.occurrencesByAddress.keys()).sort((a, b) => a.localeCompare(b));
   }

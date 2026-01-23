@@ -1,11 +1,9 @@
-import type * as vscode from "vscode";
-
 import type { Address, ChainAddressInfo, ChainId } from "@lighthouse/shared";
 
-import type { ChainConfig } from "../core/chains";
-import type { Logger } from "../core/logger";
-import type { CacheStore } from "../data/cache-store";
-import type { RpcClient } from "../data/rpc-client";
+import type { ChainConfig } from "./chains";
+import type { Logger } from "./logger";
+import type { CacheStore } from "./cache";
+import type { RpcClient } from "./rpc-client";
 
 export interface EnrichmentContext {
   address: Address;
@@ -15,7 +13,7 @@ export interface EnrichmentContext {
   rpc: RpcClient;
   cache: CacheStore;
   logger: Logger;
-  cancel?: vscode.CancellationToken;
+  signal?: AbortSignal;
   code?: string;
 }
 
@@ -35,7 +33,7 @@ export class EnrichmentPipeline {
 
   async run(ctx: EnrichmentContext): Promise<void> {
     for (const enricher of this.enrichers) {
-      if (ctx.cancel?.isCancellationRequested) {
+      if (ctx.signal?.aborted) {
         return;
       }
 

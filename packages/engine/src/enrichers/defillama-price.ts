@@ -1,6 +1,6 @@
 import type { Enricher, EnrichmentContext } from "../enrichment";
 
-import type { DefiLlamaClient } from "../../data/defillama-client";
+import type { DefiLlamaClient } from "../defillama-client";
 
 export class DefiLlamaPriceEnricher implements Enricher {
   id = "defillama-price";

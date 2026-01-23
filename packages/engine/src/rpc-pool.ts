@@ -1,7 +1,12 @@
 import type { ChainId } from "@lighthouse/shared";
 
-import type { ChainConfig } from "../core/chains";
-import type { LighthouseSettings } from "../core/settings";
+import type { ChainConfig } from "./chains";
+
+export interface RpcPoolSettings {
+  roundRobin: boolean;
+  cooldownBaseMs: number;
+  maxRetriesBeforeDisable: number;
+}
 
 interface RpcHealth {
   url: string;
@@ -16,7 +21,7 @@ export class RpcPool {
   private readonly pools = new Map<ChainId, RpcHealth[]>();
   private readonly roundRobinIndex = new Map<ChainId, number>();
 
-  constructor(private readonly settings: LighthouseSettings) {}
+  constructor(private readonly settings: RpcPoolSettings) {}
 
   pick(chain: ChainConfig): RpcHealth | undefined {
     const pool = this.ensurePool(chain);
@@ -33,7 +38,7 @@ export class RpcPool {
       return undefined;
     }
 
-    if (!this.settings.rpc.roundRobin) {
+    if (!this.settings.roundRobin) {
       return candidates[0];
     }
 
@@ -64,7 +69,7 @@ export class RpcPool {
     rpc.failures += 1;
     rpc.lastFailureAt = Date.now();
     rpc.cooldownUntil = Date.now() + this.cooldownMs(rpc.failures);
-    if (rpc.failures >= this.settings.rpc.maxRetriesBeforeDisable) {
+    if (rpc.failures >= this.settings.maxRetriesBeforeDisable) {
       rpc.disabled = true;
     }
   }
@@ -89,7 +94,7 @@ export class RpcPool {
   }
 
   private cooldownMs(failures: number): number {
-    const base = this.settings.rpc.cooldownBaseMs;
+    const base = this.settings.cooldownBaseMs;
     return base * Math.pow(2, Math.min(failures, 6));
   }
 }

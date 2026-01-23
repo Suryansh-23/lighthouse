@@ -6,7 +6,6 @@ import {
   type Hex,
 } from "viem";
 
-import { toAbortSignal } from "../../core/cancellation";
 import type { Enricher, EnrichmentContext } from "../enrichment";
 
 const ERC165_ABI = parseAbi(["function supportsInterface(bytes4 interfaceId) view returns (bool)"]);
@@ -111,11 +110,12 @@ async function supportsInterface(ctx: EnrichmentContext, interfaceId: Hex): Prom
   }
 
   try {
-    const [supported] = decodeFunctionResult({
+    const decoded = decodeFunctionResult({
       abi: ERC165_ABI,
       functionName: "supportsInterface",
       data: result,
-    });
+    }) as unknown as readonly unknown[];
+    const supported = decoded[0];
     return Boolean(supported);
   } catch {
     return false;
@@ -130,7 +130,12 @@ async function callString(ctx: EnrichmentContext, abi: typeof ERC20_ABI, name: s
   }
 
   try {
-    const [value] = decodeFunctionResult({ abi, functionName: name as never, data: result });
+    const decoded = decodeFunctionResult({
+      abi,
+      functionName: name as never,
+      data: result,
+    }) as unknown as readonly unknown[];
+    const value = decoded[0];
     return typeof value === "string" ? value : undefined;
   } catch {
     return undefined;
@@ -149,7 +154,12 @@ async function callNumber(
   }
 
   try {
-    const [value] = decodeFunctionResult({ abi, functionName: name as never, data: result });
+    const decoded = decodeFunctionResult({
+      abi,
+      functionName: name as never,
+      data: result,
+    }) as unknown as readonly unknown[];
+    const value = decoded[0];
     if (typeof value === "bigint") {
       return Number(value);
     }
@@ -171,7 +181,12 @@ async function callBigInt(
   }
 
   try {
-    const [value] = decodeFunctionResult({ abi, functionName: name as never, data: result });
+    const decoded = decodeFunctionResult({
+      abi,
+      functionName: name as never,
+      data: result,
+    }) as unknown as readonly unknown[];
+    const value = decoded[0];
     return typeof value === "bigint" ? value : undefined;
   } catch {
     return undefined;
@@ -190,7 +205,12 @@ async function callAddress(
   }
 
   try {
-    const [value] = decodeFunctionResult({ abi, functionName: name as never, data: result });
+    const decoded = decodeFunctionResult({
+      abi,
+      functionName: name as never,
+      data: result,
+    }) as unknown as readonly unknown[];
+    const value = decoded[0];
     return typeof value === "string" ? (value as ViemAddress) : undefined;
   } catch {
     return undefined;
@@ -199,8 +219,7 @@ async function callAddress(
 
 async function safeCall(ctx: EnrichmentContext, data: Hex): Promise<Hex | undefined> {
   try {
-    const signal = toAbortSignal(ctx.cancel);
-    return (await ctx.rpc.call(ctx.address, data, signal, DEFAULT_GAS)) as Hex;
+    return (await ctx.rpc.call(ctx.address, data, ctx.signal, DEFAULT_GAS)) as Hex;
   } catch {
     return undefined;
   }

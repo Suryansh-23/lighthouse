@@ -5,6 +5,7 @@ import { getSettings } from "../core/settings";
 
 const INVALID_ADDRESS_CODE = "lighthouse.addressInvalid";
 const CHECKSUM_ADDRESS_CODE = "lighthouse.addressChecksum";
+const checksumFixes = new Map<string, string>();
 
 export function registerDiagnostics(context: vscode.ExtensionContext) {
   const collection = vscode.languages.createDiagnosticCollection("lighthouse");
@@ -23,6 +24,7 @@ export function registerDiagnostics(context: vscode.ExtensionContext) {
     }
 
     const diagnostics: vscode.Diagnostic[] = [];
+    clearDocumentFixes(doc);
     for (const match of extractAddressMatches(doc)) {
       if (!match.normalized) {
         const diagnostic = new vscode.Diagnostic(
@@ -42,7 +44,8 @@ export function registerDiagnostics(context: vscode.ExtensionContext) {
           vscode.DiagnosticSeverity.Information,
         );
         diagnostic.code = CHECKSUM_ADDRESS_CODE;
-        diagnostic.data = { normalized: match.normalized };
+        const key = buildKey(doc.uri, match.range);
+        checksumFixes.set(key, match.normalized);
         diagnostics.push(diagnostic);
       }
     }
@@ -56,7 +59,10 @@ export function registerDiagnostics(context: vscode.ExtensionContext) {
     vscode.workspace.onDidOpenTextDocument(doc => update(doc)),
     vscode.workspace.onDidChangeTextDocument(event => schedule(event.document)),
     vscode.workspace.onDidSaveTextDocument(doc => update(doc)),
-    vscode.workspace.onDidCloseTextDocument(doc => collection.delete(doc.uri)),
+    vscode.workspace.onDidCloseTextDocument(doc => {
+      collection.delete(doc.uri);
+      clearDocumentFixes(doc);
+    }),
   );
 
   context.subscriptions.push(
@@ -86,7 +92,7 @@ class AddressCodeActionProvider implements vscode.CodeActionProvider {
         continue;
       }
 
-      const normalized = (diagnostic.data as { normalized?: string } | undefined)?.normalized;
+      const normalized = checksumFixes.get(buildKey(document.uri, diagnostic.range));
       if (!normalized) {
         continue;
       }
@@ -102,6 +108,19 @@ class AddressCodeActionProvider implements vscode.CodeActionProvider {
     }
 
     return actions;
+  }
+}
+
+function buildKey(uri: vscode.Uri, range: vscode.Range): string {
+  return `${uri.toString()}:${range.start.line}:${range.start.character}:${range.end.line}:${range.end.character}`;
+}
+
+function clearDocumentFixes(doc: vscode.TextDocument) {
+  const prefix = `${doc.uri.toString()}:`;
+  for (const key of Array.from(checksumFixes.keys())) {
+    if (key.startsWith(prefix)) {
+      checksumFixes.delete(key);
+    }
   }
 }
 

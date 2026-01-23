@@ -1,10 +1,12 @@
 import * as vscode from "vscode";
 
 import type { Address } from "@lighthouse/shared";
-
-import { normalizeAddress } from "./addresses";
-
-export const ADDRESS_REGEX = /0x[a-fA-F0-9]{40}/g;
+import type { AddressMatch as EngineAddressMatch } from "@lighthouse/engine";
+import {
+  extractAddressMatches as extractEngineMatches,
+  extractAddressesFromText,
+  normalizeAddress,
+} from "@lighthouse/engine";
 
 export interface AddressHit {
   address: Address;
@@ -22,20 +24,7 @@ export interface AddressMatch {
   range: vscode.Range;
 }
 
-export function extractAddressesFromText(text: string): Address[] {
-  ADDRESS_REGEX.lastIndex = 0;
-  const matches = text.matchAll(ADDRESS_REGEX);
-  const addresses = new Set<Address>();
-
-  for (const match of matches) {
-    const normalized = normalizeAddress(match[0]);
-    if (normalized) {
-      addresses.add(normalized);
-    }
-  }
-
-  return Array.from(addresses);
-}
+export { extractAddressesFromText };
 
 export function extractAddressAtPosition(
   doc: vscode.TextDocument,
@@ -62,18 +51,15 @@ export function extractAddressOccurrences(doc: vscode.TextDocument): AddressOccu
 }
 
 export function extractAddressMatches(doc: vscode.TextDocument): AddressMatch[] {
-  const text = doc.getText();
-  const matches: AddressMatch[] = [];
+  return extractEngineMatches(doc.getText()).map(match => toRangeMatch(doc, match));
+}
 
-  ADDRESS_REGEX.lastIndex = 0;
-  for (const match of text.matchAll(ADDRESS_REGEX)) {
-    const raw = match[0];
-    const index = match.index ?? 0;
-    const normalized = normalizeAddress(raw);
-    const start = doc.positionAt(index);
-    const end = doc.positionAt(index + raw.length);
-    matches.push({ raw, normalized, range: new vscode.Range(start, end) });
-  }
-
-  return matches;
+function toRangeMatch(doc: vscode.TextDocument, match: EngineAddressMatch): AddressMatch {
+  const start = doc.positionAt(match.index);
+  const end = doc.positionAt(match.index + match.length);
+  return {
+    raw: match.raw,
+    normalized: match.normalized,
+    range: new vscode.Range(start, end),
+  };
 }

@@ -1,7 +1,5 @@
 import { getAddress, keccak256, type Hex } from "viem";
 
-import { toAbortSignal } from "../../core/cancellation";
-
 import type { Enricher, EnrichmentContext } from "../enrichment";
 
 const EIP1967_IMPLEMENTATION_SLOT =
@@ -16,8 +14,7 @@ export class ContractBasicsEnricher implements Enricher {
   }
 
   async enrich(ctx: EnrichmentContext): Promise<void> {
-    const signal = toAbortSignal(ctx.cancel);
-    const code = ctx.code ?? (await ctx.rpc.getCode(ctx.address, signal));
+    const code = ctx.code ?? (await ctx.rpc.getCode(ctx.address, ctx.signal));
     const bytecodeHash = code && code !== "0x" ? keccak256(code as Hex) : undefined;
 
     if (!ctx.info.contract) {
@@ -28,7 +25,7 @@ export class ContractBasicsEnricher implements Enricher {
       ctx.info.contract.bytecodeHash = bytecodeHash;
     }
 
-    const proxy = await detectProxy(ctx, signal);
+    const proxy = await detectProxy(ctx);
     if (proxy) {
       ctx.info.contract.proxy = proxy;
       ctx.info.contract.classification = {
@@ -40,8 +37,12 @@ export class ContractBasicsEnricher implements Enricher {
   }
 }
 
-async function detectProxy(ctx: EnrichmentContext, signal?: AbortSignal) {
-  const slotValue = await ctx.rpc.getStorageAt(ctx.address, EIP1967_IMPLEMENTATION_SLOT, signal);
+async function detectProxy(ctx: EnrichmentContext) {
+  const slotValue = await ctx.rpc.getStorageAt(
+    ctx.address,
+    EIP1967_IMPLEMENTATION_SLOT,
+    ctx.signal,
+  );
   const normalized = normalizeSlotAddress(slotValue);
   if (!normalized) {
     return undefined;

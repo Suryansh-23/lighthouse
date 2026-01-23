@@ -1,19 +1,23 @@
 import * as vscode from "vscode";
 
 import { getSettings } from "./core/settings";
-import { CacheStore } from "./data/cache-store";
+import {
+  AddressResolver,
+  ContractBasicsEnricher,
+  DefiLlamaClient,
+  DefiLlamaPriceEnricher,
+  EnrichmentPipeline,
+  EoaBasicsEnricher,
+  ErcDetectorEnricher,
+  ExplorerClient,
+  ExplorerMetadataEnricher,
+  RpcPool,
+  resolveChains,
+} from "@lighthouse/engine";
+
 import { AddressBookStore } from "./data/address-book-store";
-import { DefiLlamaClient } from "./data/defillama-client";
-import { ExplorerClient } from "./data/explorer-client";
-import { RpcPool } from "./data/rpc-pool";
-import { EnrichmentPipeline } from "./domain/enrichment";
-import { ContractBasicsEnricher } from "./domain/enrichers/contract-basics";
-import { DefiLlamaPriceEnricher } from "./domain/enrichers/defillama-price";
-import { EoaBasicsEnricher } from "./domain/enrichers/eoa-basics";
-import { ErcDetectorEnricher } from "./domain/enrichers/erc-detector";
-import { ExplorerMetadataEnricher } from "./domain/enrichers/explorer-metadata";
+import { CacheStore } from "./data/cache-store";
 import { WorkspaceIndexer } from "./domain/indexer";
-import { AddressResolver } from "./domain/resolve";
 import { registerAddressBookView } from "./ui/address-book";
 import { registerCodeLens } from "./ui/codelens";
 import { registerCommands } from "./ui/commands";
@@ -33,8 +37,9 @@ export async function activate(context: vscode.ExtensionContext) {
   const addressBook = new AddressBookStore(context);
   await addressBook.init();
 
-  const rpcPool = new RpcPool(settings);
-  const explorerClient = new ExplorerClient(context.secrets);
+  const rpcPool = new RpcPool(settings.rpc);
+  const explorerApiKey = await context.secrets.get("lighthouse.explorerApiKey");
+  const explorerClient = new ExplorerClient(explorerApiKey ?? undefined);
   const defillamaClient = new DefiLlamaClient();
   const pipeline = new EnrichmentPipeline([
     new EoaBasicsEnricher(),
@@ -43,11 +48,25 @@ export async function activate(context: vscode.ExtensionContext) {
     new ExplorerMetadataEnricher(explorerClient),
     new DefiLlamaPriceEnricher(defillamaClient),
   ]);
-  const resolver = new AddressResolver(cache, rpcPool, pipeline);
+  const chains = resolveChains(settings.chains);
+  const resolver = new AddressResolver({
+    cache,
+    rpcPool,
+    pipeline,
+    chains,
+    scanMode: mapScanMode(settings.chains.mode),
+  });
   const inspector = new InspectorController(context, { cache, resolver, addressBook });
   const indexer = new WorkspaceIndexer(addressBook);
 
-  registerCommands(context, { cache, addressBook, indexer, inspector });
+  registerCommands(context, {
+    cache,
+    addressBook,
+    indexer,
+    inspector,
+    explorerClient,
+    secrets: context.secrets,
+  });
   registerHover(context, { cache, resolver });
   registerCodeLens(context, { cache });
   registerAddressBookView(context, addressBook);
@@ -78,4 +97,15 @@ export async function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {
   return undefined;
+}
+
+function mapScanMode(mode: "workspaceLimited" | "userAll" | "singleChain") {
+  switch (mode) {
+    case "userAll":
+      return "userChains";
+    case "singleChain":
+      return "singleChain";
+    default:
+      return "workspaceChains";
+  }
 }

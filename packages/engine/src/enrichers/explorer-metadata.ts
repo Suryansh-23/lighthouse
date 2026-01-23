@@ -1,6 +1,6 @@
 import type { Enricher, EnrichmentContext } from "../enrichment";
 
-import type { ExplorerClient } from "../../data/explorer-client";
+import type { ExplorerClient } from "../explorer-client";
 
 export class ExplorerMetadataEnricher implements Enricher {
   id = "explorer-metadata";

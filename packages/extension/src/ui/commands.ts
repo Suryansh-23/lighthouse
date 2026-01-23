@@ -2,12 +2,13 @@ import * as vscode from "vscode";
 
 import type { Address, ChainId } from "@lighthouse/shared";
 
-import { getChainById, resolveChains } from "../core/chain-config";
-import { buildExplorerUrl } from "../core/explorer";
+import { buildExplorerUrl, getChainById, resolveChains } from "@lighthouse/engine";
 import { getSettings } from "../core/settings";
 import type { AddressBookStore } from "../data/address-book-store";
 import type { CacheStore } from "../data/cache-store";
 import type { WorkspaceIndexer } from "../domain/indexer";
+import type { ExplorerClient } from "@lighthouse/engine";
+
 import type { InspectorController } from "./inspector";
 
 interface AddressCommandArgs {
@@ -20,6 +21,8 @@ interface CommandDeps {
   addressBook: AddressBookStore;
   indexer: WorkspaceIndexer;
   inspector: InspectorController;
+  explorerClient: ExplorerClient;
+  secrets: vscode.SecretStorage;
 }
 
 export function registerCommands(context: vscode.ExtensionContext, deps: CommandDeps) {
@@ -46,8 +49,8 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
         cached?.scan.chainsSucceeded[0] ??
         cached?.scan.chainsAttempted[0];
       const chain = chainId
-        ? getChainById(chainId, settings)
-        : resolveChains(settings)[0];
+        ? getChainById(chainId, settings.chains)
+        : resolveChains(settings.chains)[0];
       const url = buildExplorerUrl(args.address, chain, settings.explorer.default);
       const target = vscode.Uri.parse(url);
 
@@ -96,6 +99,38 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
     vscode.commands.registerCommand("lighthouse.reindexWorkspace", async () => {
       await deps.indexer.scanWorkspace();
       void vscode.window.showInformationMessage("Lighthouse: Workspace indexed.");
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("lighthouse.clearCache", async () => {
+      await deps.cache.clear();
+      void vscode.window.showInformationMessage("Lighthouse: Cache cleared.");
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("lighthouse.setExplorerApiKey", async () => {
+      const apiKey = await vscode.window.showInputBox({
+        title: "Lighthouse: Set Explorer API Key",
+        prompt: "Enter your explorer API key (leave blank to clear).",
+        ignoreFocusOut: true,
+      });
+
+      if (apiKey === undefined) {
+        return;
+      }
+
+      if (!apiKey) {
+        await deps.secrets.delete("lighthouse.explorerApiKey");
+        deps.explorerClient.setApiKey(undefined);
+        void vscode.window.showInformationMessage("Lighthouse: Explorer API key cleared.");
+        return;
+      }
+
+      await deps.secrets.store("lighthouse.explorerApiKey", apiKey);
+      deps.explorerClient.setApiKey(apiKey);
+      void vscode.window.showInformationMessage("Lighthouse: Explorer API key saved.");
     }),
   );
 

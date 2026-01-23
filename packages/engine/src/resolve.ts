@@ -1,51 +1,55 @@
-import type * as vscode from "vscode";
-
 import type { Address, AddressResolution, ChainAddressInfo, ChainId } from "@lighthouse/shared";
 
-import { resolveChains } from "../core/chain-config";
-import { consoleLogger } from "../core/logger";
-import { getSettings } from "../core/settings";
-import { toAbortSignal } from "../core/cancellation";
-import { CacheStore } from "../data/cache-store";
-import { RpcClient } from "../data/rpc-client";
-import { RpcPool } from "../data/rpc-pool";
+import type { CacheStore } from "./cache";
+import type { ChainConfig } from "./chains";
+import { consoleLogger, type Logger } from "./logger";
 import type { EnrichmentPipeline } from "./enrichment";
+import { RpcClient } from "./rpc-client";
+import { RpcPool } from "./rpc-pool";
+
+export type ScanMode = AddressResolution["scan"]["mode"];
 
 interface ResolveOptions {
-  token?: vscode.CancellationToken;
+  signal?: AbortSignal;
+}
+
+interface ResolverConfig {
+  cache: CacheStore;
+  rpcPool: RpcPool;
+  pipeline: EnrichmentPipeline;
+  chains: ChainConfig[];
+  scanMode: ScanMode;
+  logger?: Logger;
 }
 
 export class AddressResolver {
-  constructor(
-    private readonly cache: CacheStore,
-    private readonly rpcPool: RpcPool,
-    private readonly pipeline: EnrichmentPipeline,
-  ) {}
+  private readonly logger: Logger;
+
+  constructor(private readonly config: ResolverConfig) {
+    this.logger = config.logger ?? consoleLogger;
+  }
 
   async resolve(address: Address, options: ResolveOptions = {}): Promise<AddressResolution> {
-    const cached = this.cache.get(address);
+    const cached = this.config.cache.get(address);
     if (cached) {
       return cached;
     }
 
-    const settings = getSettings();
-    const chains = resolveChains(settings);
+    const chains = this.config.chains;
     const chainIds = chains.map(chain => chain.chainId);
     const perChain: Record<ChainId, ChainAddressInfo> = {};
 
     const tasks = chains.map(async chain => {
-      const rpcHealth = this.rpcPool.pick(chain);
+      const rpcHealth = this.config.rpcPool.pick(chain);
       if (!rpcHealth) {
         return { chainId: chain.chainId, reason: "no rpc configured" };
       }
 
       const rpc = new RpcClient(chain.chainId, rpcHealth.url);
-      const signal = toAbortSignal(options.token);
-
       try {
         const startedAt = Date.now();
-        const code = await rpc.getCode(address, signal);
-        this.rpcPool.reportSuccess(chain.chainId, rpcHealth.url, Date.now() - startedAt);
+        const code = await rpc.getCode(address, options.signal);
+        this.config.rpcPool.reportSuccess(chain.chainId, rpcHealth.url, Date.now() - startedAt);
         const isContract = code !== "0x";
         const info: ChainAddressInfo = {
           chainId: chain.chainId,
@@ -56,20 +60,20 @@ export class AddressResolver {
         };
         perChain[chain.chainId] = info;
 
-        await this.pipeline.run({
+        await this.config.pipeline.run({
           address,
           chainId: chain.chainId,
           chain,
           info,
           rpc,
-          cache: this.cache,
-          logger: consoleLogger,
-          cancel: options.token,
+          cache: this.config.cache,
+          logger: this.logger,
+          signal: options.signal,
           code,
         });
         return { chainId: chain.chainId };
       } catch (error) {
-        this.rpcPool.reportFailure(chain.chainId, rpcHealth.url);
+        this.config.rpcPool.reportFailure(chain.chainId, rpcHealth.url);
         return {
           chainId: chain.chainId,
           reason: error instanceof Error ? error.message : "unknown error",
@@ -92,7 +96,7 @@ export class AddressResolver {
       address,
       scannedAt: new Date().toISOString(),
       scan: {
-        mode: mapScanMode(settings.chains.mode),
+        mode: this.config.scanMode,
         chainsAttempted: chainIds,
         chainsSucceeded,
         chainsFailed,
@@ -100,18 +104,7 @@ export class AddressResolver {
       perChain,
     };
 
-    await this.cache.set(address, resolution);
+    await this.config.cache.set(address, resolution);
     return resolution;
-  }
-}
-
-function mapScanMode(mode: "workspaceLimited" | "userAll" | "singleChain"): AddressResolution["scan"]["mode"] {
-  switch (mode) {
-    case "userAll":
-      return "userChains";
-    case "singleChain":
-      return "singleChain";
-    default:
-      return "workspaceChains";
   }
 }

@@ -1,7 +1,6 @@
 import * as assert from "assert";
 
-import { buildExplorerUrl } from "../../core/explorer";
-import { extractAddressesFromText } from "../../core/extract";
+import { buildExplorerUrl, extractAddressesFromText } from "@lighthouse/engine";
 
 suite("Core utilities", () => {
   test("extracts unique addresses from text", () => {

@@ -69,6 +69,11 @@ export class CacheStore {
     await this.persist();
   }
 
+  async clear(): Promise<void> {
+    this.entries.clear();
+    await this.persist();
+  }
+
   private async persist(): Promise<void> {
     if (!this.fileUri) {
       return;

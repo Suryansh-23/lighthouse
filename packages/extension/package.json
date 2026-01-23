@@ -1,5 +1,5 @@
 {
-  "name": "@lighthouse/extension",
+  "name": "lighthouse-extension",
   "displayName": "Lighthouse",
   "description": "EVM address intelligence for VS Code",
   "version": "0.0.1",
@@ -24,6 +24,8 @@
     "onCommand:lighthouse.removeFromAddressBook",
     "onCommand:lighthouse.reindexWorkspace",
     "onCommand:lighthouse.revealOccurrences",
+    "onCommand:lighthouse.clearCache",
+    "onCommand:lighthouse.setExplorerApiKey",
     "onView:lighthouseAddressBook",
     "onLanguage:typescript",
     "onLanguage:javascript",
@@ -61,6 +63,14 @@
       {
         "command": "lighthouse.revealOccurrences",
         "title": "Lighthouse: Reveal Address Occurrences"
+      },
+      {
+        "command": "lighthouse.clearCache",
+        "title": "Lighthouse: Clear Cache"
+      },
+      {
+        "command": "lighthouse.setExplorerApiKey",
+        "title": "Lighthouse: Set Explorer API Key"
       }
     ],
     "views": {
@@ -203,14 +213,14 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "pnpm --filter @lighthouse/shared build && pnpm --filter @lighthouse/engine build && tsc -p tsconfig.json",
     "watch": "tsc -p tsconfig.json --watch",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "pnpm run build && node ./dist/test/runTest.js"
   },
   "dependencies": {
-    "@lighthouse/shared": "workspace:*",
-    "viem": "^2.19.0"
+    "@lighthouse/engine": "workspace:*",
+    "@lighthouse/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.6",

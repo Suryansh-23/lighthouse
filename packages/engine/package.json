@@ -1,0 +1,16 @@
+{
+  "name": "@lighthouse/engine",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "pnpm run build && node ./test/engine.test.js"
+  },
+  "dependencies": {
+    "@lighthouse/shared": "workspace:*",
+    "viem": "^2.19.0"
+  }
+}

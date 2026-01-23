@@ -11,9 +11,17 @@
     "lint": "pnpm -r run lint",
     "test": "pnpm -r run test",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "extension:build": "pnpm --filter lighthouse-extension run build",
+    "extension:watch": "pnpm --filter lighthouse-extension run watch",
+    "extension:lint": "pnpm --filter lighthouse-extension run lint",
+    "extension:test": "pnpm --filter lighthouse-extension run test",
+    "extension:package": "pnpm --filter lighthouse-extension exec vsce package --out packages/extension/dist/lighthouse.vsix",
+    "extension:install": "pnpm extension:package && code --install-extension packages/extension/dist/lighthouse.vsix --force",
+    "extension:dev": "code --extensionDevelopmentPath=packages/extension"
   },
   "devDependencies": {
+    "@vscode/vsce": "^3.3.2",
     "@typescript-eslint/eslint-plugin": "^7.10.0",
     "@typescript-eslint/parser": "^7.10.0",
     "eslint": "^8.57.0",

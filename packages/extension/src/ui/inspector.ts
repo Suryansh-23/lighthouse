@@ -1,14 +1,12 @@
 import * as vscode from "vscode";
 
-import type { Address, AddressResolution, ChainAddressInfo } from "@lighthouse/shared";
+import type { Address, AddressResolution } from "@lighthouse/shared";
 
-import { normalizeAddress } from "../core/addresses";
-import { buildExplorerUrl } from "../core/explorer";
-import { getChainById } from "../core/chain-config";
+import { buildExplorerUrl, getChainById, normalizeAddress } from "@lighthouse/engine";
 import { getSettings } from "../core/settings";
 import type { AddressBookStore } from "../data/address-book-store";
 import type { CacheStore } from "../data/cache-store";
-import type { AddressResolver } from "../domain/resolve";
+import type { AddressResolver } from "@lighthouse/engine";
 
 interface InspectorDeps {
   cache: CacheStore;
@@ -133,7 +131,7 @@ export class InspectorController {
         void vscode.window.showInformationMessage("Lighthouse: Address copied.");
         break;
       case "openExplorer": {
-        const chain = chainId ? getChainById(chainId, settings) : undefined;
+        const chain = chainId ? getChainById(chainId, settings.chains) : undefined;
         const url = buildExplorerUrl(address, chain, settings.explorer.default);
         await vscode.env.openExternal(vscode.Uri.parse(url));
         break;
@@ -479,10 +477,10 @@ function renderInspectorHtml(webview: vscode.Webview, address: Address): string 
       function render(state) {
         addressEl.textContent = state.address;
         pinBtn.textContent = state.pinned ? "Unpin" : "Pin";
-        occurrencesEl.textContent = `Occurrences: ${state.occurrences}`;
+        occurrencesEl.textContent = "Occurrences: " + state.occurrences;
         occurrenceSummary.textContent =
           state.occurrences > 0
-            ? `Found ${state.occurrences} occurrences in this workspace.`
+            ? "Found " + state.occurrences + " occurrences in this workspace."
             : "No occurrences yet.";
         occurrenceList.innerHTML = "";
         if (state.occurrences > 0) {
@@ -506,18 +504,29 @@ function renderInspectorHtml(webview: vscode.Webview, address: Address): string 
         if (primary) {
           const classification = primary.contract && primary.contract.classification;
           const token = primary.token;
-          const price = token && token.price && token.price.usd !== undefined ? `$${token.price.usd.toFixed(2)}` : "";
-          summaryEl.textContent = `${primary.chainName} (${primary.chainId}) · ${primary.kind}` +
-            (classification ? ` · ${classification.type}` : "") +
-            (token && token.symbol ? ` (${token.symbol})` : "") +
-            (price ? ` · ${price}` : "");
+          const price =
+            token && token.price && token.price.usd !== undefined
+              ? "$" + token.price.usd.toFixed(2)
+              : "";
+          let summary =
+            primary.chainName + " (" + primary.chainId + ") · " + primary.kind;
+          if (classification) {
+            summary += " · " + classification.type;
+          }
+          if (token && token.symbol) {
+            summary += " (" + token.symbol + ")";
+          }
+          if (price) {
+            summary += " · " + price;
+          }
+          summaryEl.textContent = summary;
         }
 
         overviewChips.innerHTML = "";
         const chips = [
-          `Chains scanned: ${resolution.scan.chainsAttempted.length}`,
-          `Success: ${resolution.scan.chainsSucceeded.length}`,
-          `Failures: ${resolution.scan.chainsFailed.length}`,
+          "Chains scanned: " + resolution.scan.chainsAttempted.length,
+          "Success: " + resolution.scan.chainsSucceeded.length,
+          "Failures: " + resolution.scan.chainsFailed.length,
         ];
         chips.forEach(chip => {
           const el = document.createElement("div");
@@ -530,8 +539,12 @@ function renderInspectorHtml(webview: vscode.Webview, address: Address): string 
         Object.values(resolution.perChain).forEach(info => {
           const item = document.createElement("div");
           item.className = "list-item";
-          const classification = info.contract && info.contract.classification ? ` · ${info.contract.classification.type}` : "";
-          item.textContent = `${info.chainName} (${info.chainId}) · ${info.kind}${classification}`;
+          const classification =
+            info.contract && info.contract.classification
+              ? " · " + info.contract.classification.type
+              : "";
+          item.textContent =
+            info.chainName + " (" + info.chainId + ") · " + info.kind + classification;
           chainList.appendChild(item);
         });
         if (!Object.values(resolution.perChain).length) {
@@ -542,16 +555,20 @@ function renderInspectorHtml(webview: vscode.Webview, address: Address): string 
         if (primary && primary.contract) {
           const items = [];
           if (primary.contract.bytecodeHash) {
-            items.push(`Bytecode hash: ${primary.contract.bytecodeHash.slice(0, 12)}…`);
+            items.push("Bytecode hash: " + primary.contract.bytecodeHash.slice(0, 12) + "…");
           }
           if (primary.contract.proxy && primary.contract.proxy.implementation) {
-            items.push(`Proxy: ${primary.contract.proxy.type} → ${primary.contract.proxy.implementation}`);
+            items.push(
+              "Proxy: " + primary.contract.proxy.type + " → " + primary.contract.proxy.implementation,
+            );
           }
           if (primary.contract.metadata && primary.contract.metadata.contractName) {
-            items.push(`Name: ${primary.contract.metadata.contractName}`);
+            items.push("Name: " + primary.contract.metadata.contractName);
           }
           if (primary.contract.metadata && primary.contract.metadata.verified !== undefined) {
-            items.push(`Verified: ${primary.contract.metadata.verified ? "yes" : "no"}`);
+            items.push(
+              "Verified: " + (primary.contract.metadata.verified ? "yes" : "no"),
+            );
           }
           if (items.length === 0) {
             contractList.innerHTML = "<div class='empty'>No contract metadata.</div>";
@@ -570,13 +587,15 @@ function renderInspectorHtml(webview: vscode.Webview, address: Address): string 
         tokenList.innerHTML = "";
         if (primary && primary.token) {
           const items = [];
-          items.push(`Standard: ${primary.token.standard}`);
-          if (primary.token.name) items.push(`Name: ${primary.token.name}`);
-          if (primary.token.symbol) items.push(`Symbol: ${primary.token.symbol}`);
-          if (primary.token.decimals !== undefined) items.push(`Decimals: ${primary.token.decimals}`);
-          if (primary.token.totalSupply) items.push(`Supply: ${primary.token.totalSupply}`);
+          items.push("Standard: " + primary.token.standard);
+          if (primary.token.name) items.push("Name: " + primary.token.name);
+          if (primary.token.symbol) items.push("Symbol: " + primary.token.symbol);
+          if (primary.token.decimals !== undefined) {
+            items.push("Decimals: " + primary.token.decimals);
+          }
+          if (primary.token.totalSupply) items.push("Supply: " + primary.token.totalSupply);
           if (primary.token.price && primary.token.price.usd !== undefined) {
-            items.push(`Price: $${primary.token.price.usd.toFixed(2)}`);
+            items.push("Price: $" + primary.token.price.usd.toFixed(2));
           }
           items.forEach(text => {
             const item = document.createElement("div");

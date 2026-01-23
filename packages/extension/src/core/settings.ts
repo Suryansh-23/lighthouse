@@ -2,9 +2,7 @@ import * as vscode from "vscode";
 
 import type { ChainId } from "@lighthouse/shared";
 
-import type { ChainConfig, ExplorerKind } from "./chains";
-
-export type ChainMode = "workspaceLimited" | "userAll" | "singleChain";
+import type { ChainConfig, ChainMode, ExplorerKind, RpcPoolSettings } from "@lighthouse/engine";
 
 export interface LighthouseSettings {
   enabled: boolean;
@@ -20,11 +18,7 @@ export interface LighthouseSettings {
     workspaceAllowlist: ChainId[];
     userChains: ChainConfig[];
   };
-  rpc: {
-    roundRobin: boolean;
-    cooldownBaseMs: number;
-    maxRetriesBeforeDisable: number;
-  };
+  rpc: RpcPoolSettings;
   explorer: {
     default: ExplorerKind;
     openInExternalBrowser: boolean;

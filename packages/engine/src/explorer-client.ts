@@ -1,8 +1,6 @@
-import type * as vscode from "vscode";
-
 import type { Address } from "@lighthouse/shared";
 
-import type { ChainConfig } from "../core/chains";
+import type { ChainConfig } from "./chains";
 
 interface ExplorerSourceResult {
   ContractName?: string;
@@ -23,18 +21,15 @@ export interface ExplorerMetadata {
   sourceUrl?: string;
 }
 
-const API_KEY_SECRET = "lighthouse.explorerApiKey";
-
 export class ExplorerClient {
-  constructor(private readonly secrets: vscode.SecretStorage) {}
+  constructor(private apiKey?: string) {}
+
+  setApiKey(value?: string) {
+    this.apiKey = value;
+  }
 
   async getContractMetadata(chain: ChainConfig, address: Address): Promise<ExplorerMetadata | undefined> {
-    if (!chain.explorer?.apiBaseUrl) {
-      return undefined;
-    }
-
-    const apiKey = await this.secrets.get(API_KEY_SECRET);
-    if (!apiKey) {
+    if (!chain.explorer?.apiBaseUrl || !this.apiKey) {
       return undefined;
     }
 
@@ -42,7 +37,7 @@ export class ExplorerClient {
     url.searchParams.set("module", "contract");
     url.searchParams.set("action", "getsourcecode");
     url.searchParams.set("address", address);
-    url.searchParams.set("apikey", apiKey);
+    url.searchParams.set("apikey", this.apiKey);
 
     const response = await fetch(url.toString());
     if (!response.ok) {

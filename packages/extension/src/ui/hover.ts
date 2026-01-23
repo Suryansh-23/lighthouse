@@ -4,8 +4,9 @@ import type { AddressResolution, ChainAddressInfo } from "@lighthouse/shared";
 
 import { extractAddressAtPosition } from "../core/extract";
 import { getSettings } from "../core/settings";
+import { toAbortSignal } from "../core/cancellation";
 import { CacheStore } from "../data/cache-store";
-import type { AddressResolver } from "../domain/resolve";
+import type { AddressResolver } from "@lighthouse/engine";
 
 interface HoverDeps {
   cache: CacheStore;
@@ -36,7 +37,8 @@ export function registerHover(context: vscode.ExtensionContext, deps: HoverDeps)
         const hover = new vscode.Hover(md, hit.range);
 
         if (!cached) {
-          void deps.resolver.resolve(hit.address, { token }).catch(() => undefined);
+          const signal = toAbortSignal(token);
+          void deps.resolver.resolve(hit.address, { signal }).catch(() => undefined);
         }
 
         return hover;

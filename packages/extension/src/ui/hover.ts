@@ -6,11 +6,14 @@ import { extractAddressAtPosition } from "../core/extract";
 import { getSettings } from "../core/settings";
 import { toAbortSignal } from "../core/cancellation";
 import { CacheStore } from "../data/cache-store";
+import type { AddressBookStore } from "../data/address-book-store";
 import type { AddressResolver } from "@lighthouse/engine";
+import { selectPrimaryChain } from "./chain-selection";
 
 interface HoverDeps {
   cache: CacheStore;
   resolver: AddressResolver;
+  addressBook: AddressBookStore;
 }
 
 export function registerHover(context: vscode.ExtensionContext, deps: HoverDeps) {
@@ -33,7 +36,8 @@ export function registerHover(context: vscode.ExtensionContext, deps: HoverDeps)
         }
 
         const cached = deps.cache.get(hit.address);
-        const md = buildHoverMarkdown(hit.address, cached);
+        const notes = deps.addressBook.getNotes(hit.address);
+        const md = buildHoverMarkdown(hit.address, cached, notes);
         const hover = new vscode.Hover(md, hit.range);
 
         if (!cached) {
@@ -47,7 +51,11 @@ export function registerHover(context: vscode.ExtensionContext, deps: HoverDeps)
   );
 }
 
-function buildHoverMarkdown(address: string, resolution?: AddressResolution): vscode.MarkdownString {
+function buildHoverMarkdown(
+  address: string,
+  resolution?: AddressResolution,
+  notes?: string,
+): vscode.MarkdownString {
   const md = new vscode.MarkdownString(undefined, true);
   md.supportThemeIcons = true;
   md.isTrusted = {
@@ -63,13 +71,20 @@ function buildHoverMarkdown(address: string, resolution?: AddressResolution): vs
   md.appendMarkdown(`\`${address}\`\n\n`);
 
   if (resolution) {
-    const info = pickPrimaryChain(resolution);
+    const info = selectPrimaryChain(resolution);
     if (info) {
       const summary = formatSummary(info);
       md.appendMarkdown(`${summary}\n\n`);
+      appendDeployment(md, info);
+      appendTokenDetails(md, info);
     }
   } else {
     md.appendMarkdown("Resolving…\n\n");
+  }
+
+  if (notes) {
+    const snippet = notes.length > 180 ? `${notes.slice(0, 180)}…` : notes;
+    md.appendMarkdown(`**Notes**\n\n${escapeMarkdown(snippet)}\n\n`);
   }
 
   const args = encodeCommandArgs({ address });
@@ -105,17 +120,53 @@ function formatSummary(info: ChainAddressInfo): string {
   return base;
 }
 
-function pickPrimaryChain(resolution: AddressResolution): ChainAddressInfo | undefined {
-  const chainId =
-    resolution.scan.chainsSucceeded[0] ??
-    resolution.scan.chainsAttempted[0];
-  if (!chainId) {
-    return undefined;
-  }
-
-  return resolution.perChain[chainId];
-}
-
 function encodeCommandArgs(args: { address: string; chainId?: number }): string {
   return encodeURIComponent(JSON.stringify(args));
+}
+
+function appendDeployment(md: vscode.MarkdownString, info: ChainAddressInfo) {
+  const deployment = info.contract?.deployment;
+  if (!deployment) {
+    return;
+  }
+
+  const details: string[] = [];
+  if (deployment.blockNumber !== undefined) {
+    details.push(`Block ${deployment.blockNumber}`);
+  }
+  if (deployment.creator) {
+    details.push(`Creator ${deployment.creator}`);
+  }
+  if (deployment.txHash) {
+    details.push(`Tx ${deployment.txHash}`);
+  }
+
+  if (details.length > 0) {
+    md.appendMarkdown(`**Deployment**\n\n${details.join(" · ")}\n\n`);
+  }
+}
+
+function appendTokenDetails(md: vscode.MarkdownString, info: ChainAddressInfo) {
+  const token = info.token;
+  if (!token) {
+    return;
+  }
+
+  const lines: string[] = [];
+  lines.push(`Standard: ${token.standard}`);
+  if (token.name) lines.push(`Name: ${token.name}`);
+  if (token.symbol) lines.push(`Symbol: ${token.symbol}`);
+  if (token.decimals !== undefined) lines.push(`Decimals: ${token.decimals}`);
+  if (token.totalSupply) lines.push(`Total supply: ${token.totalSupply}`);
+  if (token.asset) lines.push(`Asset: ${token.asset}`);
+  if (token.totalAssets) lines.push(`Total assets: ${token.totalAssets}`);
+  if (token.price?.usd !== undefined) {
+    lines.push(`Price: $${token.price.usd.toFixed(2)}`);
+  }
+
+  md.appendMarkdown(`**Token details**\n\n${lines.join("\n")}\n\n`);
+}
+
+function escapeMarkdown(value: string): string {
+  return value.replace(/[\\`*_{}[\]()#+\-.!]/g, "\\$&");
 }

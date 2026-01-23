@@ -4,6 +4,7 @@ import type { Address, AddressBookEntry, OccurrenceRef } from "@lighthouse/share
 
 interface AddressBookFile {
   pinned: Record<string, AddressBookEntry>;
+  notesByAddress: Record<string, string>;
   occurrencesByAddress: Record<string, OccurrenceRef[]>;
   addressesByUri: Record<string, Address[]>;
 }
@@ -15,6 +16,7 @@ export class AddressBookStore {
   private readonly storageUri?: vscode.Uri;
   private readonly fileUri?: vscode.Uri;
   private readonly pinned = new Map<Address, AddressBookEntry>();
+  private readonly notesByAddress = new Map<Address, string>();
   private readonly occurrencesByAddress = new Map<Address, OccurrenceRef[]>();
   private readonly addressesByUri = new Map<string, Address[]>();
 
@@ -41,6 +43,10 @@ export class AddressBookStore {
 
       for (const [address, entry] of Object.entries(parsed.pinned ?? {})) {
         this.pinned.set(address as Address, entry);
+      }
+
+      for (const [address, notes] of Object.entries(parsed.notesByAddress ?? {})) {
+        this.notesByAddress.set(address as Address, notes);
       }
 
       for (const [address, occurrences] of Object.entries(parsed.occurrencesByAddress ?? {})) {
@@ -71,6 +77,14 @@ export class AddressBookStore {
     return this.occurrencesByAddress.get(address) ?? [];
   }
 
+  getAddressesForUri(uri: string): Address[] {
+    return this.addressesByUri.get(uri) ?? [];
+  }
+
+  getNotes(address: Address): string | undefined {
+    return this.pinned.get(address)?.notes ?? this.notesByAddress.get(address);
+  }
+
   isPinned(address: Address): boolean {
     return this.pinned.has(address);
   }
@@ -80,6 +94,7 @@ export class AddressBookStore {
     const entry: AddressBookEntry = {
       address,
       label,
+      notes: this.notesByAddress.get(address),
       createdAt: now,
       updatedAt: now,
       pinned: true,
@@ -128,6 +143,26 @@ export class AddressBookStore {
     this.emitter.fire();
   }
 
+  async setNotes(address: Address, notes: string): Promise<void> {
+    if (!notes) {
+      this.notesByAddress.delete(address);
+    } else {
+      this.notesByAddress.set(address, notes);
+    }
+
+    const existing = this.pinned.get(address);
+    if (existing) {
+      this.pinned.set(address, {
+        ...existing,
+        notes: notes || undefined,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    await this.persist();
+    this.emitter.fire();
+  }
+
   private async persist(): Promise<void> {
     if (!this.fileUri) {
       return;
@@ -136,6 +171,13 @@ export class AddressBookStore {
     const pinned: Record<string, AddressBookEntry> = {};
     for (const [address, entry] of this.pinned.entries()) {
       pinned[address] = entry;
+    }
+
+    const notesByAddress: Record<string, string> = {};
+    for (const [address, notes] of this.notesByAddress.entries()) {
+      if (notes) {
+        notesByAddress[address] = notes;
+      }
     }
 
     const occurrencesByAddress: Record<string, OccurrenceRef[]> = {};
@@ -150,6 +192,7 @@ export class AddressBookStore {
 
     const payload: AddressBookFile = {
       pinned,
+      notesByAddress,
       occurrencesByAddress,
       addressesByUri,
     };

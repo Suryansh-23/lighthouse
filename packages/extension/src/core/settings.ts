@@ -26,6 +26,9 @@ export interface LighthouseSettings {
   cache: {
     ttlSeconds: number;
   };
+  net: {
+    maxConcurrentRequests: number;
+  };
   security: {
     respectWorkspaceTrust: boolean;
   };
@@ -70,6 +73,9 @@ export function getSettings(): LighthouseSettings {
     },
     cache: {
       ttlSeconds: config.get("cache.ttlSeconds", 60 * 60 * 24),
+    },
+    net: {
+      maxConcurrentRequests: config.get("net.maxConcurrentRequests", 8),
     },
     security: {
       respectWorkspaceTrust: config.get("security.respectWorkspaceTrust", true),

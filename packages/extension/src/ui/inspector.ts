@@ -7,6 +7,7 @@ import { getSettings } from "../core/settings";
 import type { AddressBookStore } from "../data/address-book-store";
 import type { CacheStore } from "../data/cache-store";
 import type { AddressResolver } from "@lighthouse/engine";
+import { hasMultipleCandidateChains, promptForChain } from "./chain-selection";
 
 interface InspectorDeps {
   cache: CacheStore;
@@ -24,6 +25,7 @@ interface InspectorState {
   resolution?: AddressResolution;
   pinned: boolean;
   occurrences: number;
+  notes?: string;
 }
 
 export class InspectorController {
@@ -37,9 +39,23 @@ export class InspectorController {
       return;
     }
 
+    const resolution = await this.deps.resolver.resolve(address).catch(() => undefined);
+    const preferred = args?.chainId && resolution ? resolution.perChain[args.chainId] : undefined;
+    const chainInfo = preferred
+      ? preferred
+      : resolution
+        ? await promptForChain(resolution, "Select chain to open explorer")
+        : undefined;
+    if (resolution && hasMultipleCandidateChains(resolution) && !chainInfo) {
+      return;
+    }
+    const settings = getSettings();
+    const chain = chainInfo ? getChainById(chainInfo.chainId, settings.chains) : undefined;
+    const explorerUrl = buildExplorerUrl(address, chain, settings.explorer.default);
+
     if (!this.panel) {
       this.panel = vscode.window.createWebviewPanel(
-        "lighthouseInspector",
+        "lighthouseExplorer",
         `Lighthouse: ${address}`,
         vscode.ViewColumn.Beside,
         {
@@ -56,8 +72,14 @@ export class InspectorController {
       this.panel.title = `Lighthouse: ${address}`;
     }
 
-    this.panel.webview.html = renderInspectorHtml(this.panel.webview, address);
-    await this.pushState(address);
+    const notes = this.deps.addressBook.getNotes(address);
+    this.panel.webview.html = renderExplorerHtml(
+      this.panel.webview,
+      address,
+      explorerUrl,
+      notes ?? "",
+    );
+    await this.postState(address, resolution);
   }
 
   private async resolveAddress(value?: Address): Promise<Address | undefined> {
@@ -106,12 +128,13 @@ export class InspectorController {
       resolution,
       pinned: this.deps.addressBook.isPinned(address),
       occurrences: this.deps.addressBook.getOccurrences(address).length,
+      notes: this.deps.addressBook.getNotes(address),
     };
 
     await this.panel.webview.postMessage({ type: "state", state });
   }
 
-  private async handleMessage(message: { type: string; action?: string; address?: Address }) {
+  private async handleMessage(message: { type: string; action?: string; address?: Address; notes?: string }) {
     if (!message || message.type !== "command") {
       return;
     }
@@ -144,18 +167,30 @@ export class InspectorController {
         }
         await this.postState(address, cached);
         break;
+      case "saveNotes":
+        if (typeof message.notes === "string") {
+          await this.deps.addressBook.setNotes(address, message.notes.trim());
+        }
+        await this.postState(address, cached);
+        break;
       default:
         break;
     }
   }
 }
 
-function renderInspectorHtml(webview: vscode.Webview, address: Address): string {
+function renderExplorerHtml(
+  webview: vscode.Webview,
+  address: Address,
+  explorerUrl: string,
+  notes: string,
+): string {
   const nonce = getNonce();
   const csp = [
     "default-src 'none'",
     `style-src 'nonce-${nonce}'`,
     `script-src 'nonce-${nonce}'`,
+    "frame-src https:",
   ].join("; ");
 
   return `<!DOCTYPE html>
@@ -199,7 +234,7 @@ function renderInspectorHtml(webview: vscode.Webview, address: Address): string 
       }
 
       .frame {
-        max-width: 1100px;
+        max-width: 1200px;
         margin: 0 auto;
         padding: 32px;
         border-radius: 28px;
@@ -274,42 +309,46 @@ function renderInspectorHtml(webview: vscode.Webview, address: Address): string 
         box-shadow: 0 8px 16px rgba(242, 161, 73, 0.18);
       }
 
-      .tabs {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(220px, 320px) 1fr;
+        gap: 24px;
         margin-top: 24px;
       }
 
-      .tab {
-        border: 1px solid var(--line);
-        background: #fff;
-        color: var(--ink-muted);
-        padding: 8px 16px;
-        font-size: 12px;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        border-radius: 999px;
-        cursor: pointer;
-      }
-
-      .tab.active {
-        background: var(--ink);
-        color: #fdf6ee;
-        border-color: var(--ink);
-      }
-
-      .panels {
-        margin-top: 20px;
-        display: grid;
-      }
-
       .panel {
-        display: none;
+        padding: 18px;
+        border-radius: 18px;
+        background: #fff;
+        border: 1px solid var(--line);
+        box-shadow: 0 12px 30px rgba(31, 40, 51, 0.08);
       }
 
-      .panel.active {
-        display: block;
+      .panel h2 {
+        font-size: 14px;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        margin: 0 0 12px;
+        color: var(--ink-muted);
+      }
+
+      .notes {
+        width: 100%;
+        min-height: 160px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        padding: 10px;
+        font-family: "SF Mono", "Menlo", monospace;
+        font-size: 12px;
+        background: #fffdf8;
+      }
+
+      iframe {
+        width: 100%;
+        height: 640px;
+        border: none;
+        border-radius: 18px;
+        box-shadow: 0 18px 40px rgba(31, 40, 51, 0.16);
       }
 
       .card {
@@ -387,42 +426,19 @@ function renderInspectorHtml(webview: vscode.Webview, address: Address): string 
           </div>
         </header>
 
-        <div class="tabs">
-          <button class="tab active" data-tab="overview">Overview</button>
-          <button class="tab" data-tab="chains">Chains</button>
-          <button class="tab" data-tab="contract">Contract</button>
-          <button class="tab" data-tab="token">Token</button>
-          <button class="tab" data-tab="occurrences">Occurrences</button>
-          <button class="tab" data-tab="notes">Notes</button>
-        </div>
-
-        <div class="panels">
-          <section class="card panel active" data-panel="overview">
+        <div class="layout">
+          <section class="panel">
             <h2>Overview</h2>
             <div class="summary" id="summary">Waiting for resolution…</div>
             <div class="chip-group" id="overviewChips"></div>
             <div class="muted" id="occurrences">Occurrences: 0</div>
-          </section>
-          <section class="card panel" data-panel="chains">
-            <h2>Chains</h2>
             <div class="list" id="chainList"></div>
-          </section>
-          <section class="card panel" data-panel="contract">
-            <h2>Contract</h2>
-            <div class="list" id="contractList"></div>
-          </section>
-          <section class="card panel" data-panel="token">
-            <h2>Token</h2>
-            <div class="list" id="tokenList"></div>
-          </section>
-          <section class="card panel" data-panel="occurrences">
-            <h2>Occurrences</h2>
-            <div class="muted" id="occurrenceSummary">No occurrences yet.</div>
-            <div class="list" id="occurrenceList"></div>
-          </section>
-          <section class="card panel" data-panel="notes">
             <h2>Notes</h2>
-            <div class="muted">Notes support lands in Phase 4+.</div>
+            <textarea class="notes" id="notes" placeholder="Write notes for this address...">${escapeHtml(notes)}</textarea>
+            <div class="muted">Notes are stored locally in workspace storage.</div>
+          </section>
+          <section>
+            <iframe src="${escapeHtml(explorerUrl)}" title="Explorer"></iframe>
           </section>
         </div>
       </div>
@@ -434,15 +450,10 @@ function renderInspectorHtml(webview: vscode.Webview, address: Address): string 
       const summaryEl = document.getElementById("summary");
       const addressEl = document.getElementById("address");
       const chainList = document.getElementById("chainList");
-      const contractList = document.getElementById("contractList");
-      const tokenList = document.getElementById("tokenList");
       const overviewChips = document.getElementById("overviewChips");
       const pinBtn = document.getElementById("pinBtn");
       const occurrencesEl = document.getElementById("occurrences");
-      const occurrenceList = document.getElementById("occurrenceList");
-      const occurrenceSummary = document.getElementById("occurrenceSummary");
-      const tabs = Array.from(document.querySelectorAll(".tab"));
-      const panels = Array.from(document.querySelectorAll(".panel"));
+      const notesEl = document.getElementById("notes");
 
       window.addEventListener("message", event => {
         const { type, state } = event.data || {};
@@ -460,42 +471,31 @@ function renderInspectorHtml(webview: vscode.Webview, address: Address): string 
         });
       });
 
-      tabs.forEach(tab => {
-        tab.addEventListener("click", () => {
-          const key = tab.getAttribute("data-tab");
-          setActiveTab(key);
-        });
+      let notesTimeout = null;
+      notesEl.addEventListener("input", () => {
+        if (notesTimeout) {
+          clearTimeout(notesTimeout);
+        }
+        notesTimeout = setTimeout(() => {
+          vscode.postMessage({
+            type: "command",
+            action: "saveNotes",
+            address: currentState.address,
+            notes: notesEl.value,
+          });
+        }, 400);
       });
-
-      setActiveTab("overview");
-
-      function setActiveTab(key) {
-        tabs.forEach(tab => tab.classList.toggle("active", tab.getAttribute("data-tab") === key));
-        panels.forEach(panel => panel.classList.toggle("active", panel.getAttribute("data-panel") === key));
-      }
 
       function render(state) {
         addressEl.textContent = state.address;
         pinBtn.textContent = state.pinned ? "Unpin" : "Pin";
         occurrencesEl.textContent = "Occurrences: " + state.occurrences;
-        occurrenceSummary.textContent =
-          state.occurrences > 0
-            ? "Found " + state.occurrences + " occurrences in this workspace."
-            : "No occurrences yet.";
-        occurrenceList.innerHTML = "";
-        if (state.occurrences > 0) {
-          const item = document.createElement("div");
-          item.className = "list-item";
-          item.textContent = "Use the Address Book view to reveal occurrences.";
-          occurrenceList.appendChild(item);
+        if (typeof state.notes === "string" && notesEl.value !== state.notes) {
+          notesEl.value = state.notes;
         }
-
         const resolution = state.resolution;
         if (!resolution || !resolution.perChain) {
           summaryEl.textContent = "Waiting for resolution…";
-          chainList.innerHTML = "<div class='empty'>No chain data yet.</div>";
-          contractList.innerHTML = "<div class='empty'>No contract data yet.</div>";
-          tokenList.innerHTML = "<div class='empty'>No token data yet.</div>";
           overviewChips.innerHTML = "";
           return;
         }
@@ -550,62 +550,6 @@ function renderInspectorHtml(webview: vscode.Webview, address: Address): string 
         if (!Object.values(resolution.perChain).length) {
           chainList.innerHTML = "<div class='empty'>No chain data.</div>";
         }
-
-        contractList.innerHTML = "";
-        if (primary && primary.contract) {
-          const items = [];
-          if (primary.contract.bytecodeHash) {
-            items.push("Bytecode hash: " + primary.contract.bytecodeHash.slice(0, 12) + "…");
-          }
-          if (primary.contract.proxy && primary.contract.proxy.implementation) {
-            items.push(
-              "Proxy: " + primary.contract.proxy.type + " → " + primary.contract.proxy.implementation,
-            );
-          }
-          if (primary.contract.metadata && primary.contract.metadata.contractName) {
-            items.push("Name: " + primary.contract.metadata.contractName);
-          }
-          if (primary.contract.metadata && primary.contract.metadata.verified !== undefined) {
-            items.push(
-              "Verified: " + (primary.contract.metadata.verified ? "yes" : "no"),
-            );
-          }
-          if (items.length === 0) {
-            contractList.innerHTML = "<div class='empty'>No contract metadata.</div>";
-          } else {
-            items.forEach(text => {
-              const item = document.createElement("div");
-              item.className = "list-item";
-              item.textContent = text;
-              contractList.appendChild(item);
-            });
-          }
-        } else {
-          contractList.innerHTML = "<div class='empty'>No contract metadata.</div>";
-        }
-
-        tokenList.innerHTML = "";
-        if (primary && primary.token) {
-          const items = [];
-          items.push("Standard: " + primary.token.standard);
-          if (primary.token.name) items.push("Name: " + primary.token.name);
-          if (primary.token.symbol) items.push("Symbol: " + primary.token.symbol);
-          if (primary.token.decimals !== undefined) {
-            items.push("Decimals: " + primary.token.decimals);
-          }
-          if (primary.token.totalSupply) items.push("Supply: " + primary.token.totalSupply);
-          if (primary.token.price && primary.token.price.usd !== undefined) {
-            items.push("Price: $" + primary.token.price.usd.toFixed(2));
-          }
-          items.forEach(text => {
-            const item = document.createElement("div");
-            item.className = "list-item";
-            item.textContent = text;
-            tokenList.appendChild(item);
-          });
-        } else {
-          tokenList.innerHTML = "<div class='empty'>No token data.</div>";
-        }
       }
     </script>
   </body>
@@ -619,4 +563,13 @@ function getNonce() {
     text += possible.charAt(Math.floor(Math.random() * possible.length));
   }
   return text;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }

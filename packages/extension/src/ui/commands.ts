@@ -1,13 +1,15 @@
 import * as vscode from "vscode";
 
-import type { Address, ChainId } from "@lighthouse/shared";
+import type { Address, AddressBookEntry, AddressResolution, ChainId } from "@lighthouse/shared";
 
-import { buildExplorerUrl, getChainById, resolveChains } from "@lighthouse/engine";
+import { buildExplorerUrl } from "@lighthouse/engine";
 import { getSettings } from "../core/settings";
 import type { AddressBookStore } from "../data/address-book-store";
 import type { CacheStore } from "../data/cache-store";
 import type { WorkspaceIndexer } from "../domain/indexer";
-import type { ExplorerClient } from "@lighthouse/engine";
+import type { AddressResolver, ExplorerClient, ExplorerKind } from "@lighthouse/engine";
+import { getChainById, resolveChains } from "@lighthouse/engine";
+import { hasMultipleCandidateChains, promptForChain } from "./chain-selection";
 
 import type { InspectorController } from "./inspector";
 
@@ -23,35 +25,39 @@ interface CommandDeps {
   inspector: InspectorController;
   explorerClient: ExplorerClient;
   secrets: vscode.SecretStorage;
+  resolver: AddressResolver;
 }
 
 export function registerCommands(context: vscode.ExtensionContext, deps: CommandDeps) {
   context.subscriptions.push(
     vscode.commands.registerCommand("lighthouse.copyAddress", async (args: AddressCommandArgs) => {
-      if (!args?.address) {
+      const address = getAddressFromArgs(args);
+      if (!address) {
         return;
       }
-      await vscode.env.clipboard.writeText(args.address);
+      await vscode.env.clipboard.writeText(address);
       void vscode.window.showInformationMessage("Lighthouse: Address copied.");
     }),
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("lighthouse.openExplorer", async (args: AddressCommandArgs) => {
-      if (!args?.address) {
+      const address = getAddressFromArgs(args);
+      if (!address) {
         return;
       }
 
       const settings = getSettings();
-      const cached = deps.cache.get(args.address);
-      const chainId =
-        args.chainId ??
-        cached?.scan.chainsSucceeded[0] ??
-        cached?.scan.chainsAttempted[0];
-      const chain = chainId
-        ? getChainById(chainId, settings.chains)
+      const cached = deps.cache.get(address);
+      const resolved = cached ?? (await deps.resolver.resolve(address).catch(() => undefined));
+      const chainInfo = await selectChain(settings, resolved, args.chainId);
+      if (resolved && hasMultipleCandidateChains(resolved) && !chainInfo) {
+        return;
+      }
+      const chain = chainInfo
+        ? getChainById(chainInfo.chainId, settings.chains)
         : resolveChains(settings.chains)[0];
-      const url = buildExplorerUrl(args.address, chain, settings.explorer.default);
+      const url = buildExplorerUrl(address, chain, settings.explorer.default);
       const target = vscode.Uri.parse(url);
 
       if (settings.explorer.openInExternalBrowser) {
@@ -66,7 +72,8 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
     vscode.commands.registerCommand(
       "lighthouse.addToAddressBook",
       async (args: AddressCommandArgs) => {
-        if (!args?.address) {
+        const address = getAddressFromArgs(args);
+        if (!address) {
           return;
         }
 
@@ -75,7 +82,7 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
           prompt: "Optional label",
           value: "",
         });
-        await deps.addressBook.addPinned(args.address, label || undefined);
+        await deps.addressBook.addPinned(address, label || undefined);
         void vscode.window.showInformationMessage("Lighthouse: Address pinned.");
       },
     ),
@@ -85,11 +92,12 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
     vscode.commands.registerCommand(
       "lighthouse.removeFromAddressBook",
       async (args: AddressCommandArgs) => {
-        if (!args?.address) {
+        const address = getAddressFromArgs(args);
+        if (!address) {
           return;
         }
 
-        await deps.addressBook.removePinned(args.address);
+        await deps.addressBook.removePinned(address);
         void vscode.window.showInformationMessage("Lighthouse: Address removed.");
       },
     ),
@@ -111,9 +119,22 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
 
   context.subscriptions.push(
     vscode.commands.registerCommand("lighthouse.setExplorerApiKey", async () => {
+      const options: { label: string; value: ExplorerKind }[] = [
+        { label: "Routescan", value: "routescan" },
+        { label: "Etherscan", value: "etherscan" },
+        { label: "Blockscout", value: "blockscout" },
+      ];
+      const explorer = await vscode.window.showQuickPick(options, {
+        placeHolder: "Select explorer provider",
+      });
+
+      if (!explorer) {
+        return;
+      }
+
       const apiKey = await vscode.window.showInputBox({
-        title: "Lighthouse: Set Explorer API Key",
-        prompt: "Enter your explorer API key (leave blank to clear).",
+        title: `Lighthouse: ${explorer.label} API Key`,
+        prompt: "Enter your API key (leave blank to clear).",
         ignoreFocusOut: true,
       });
 
@@ -121,16 +142,17 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
         return;
       }
 
+      const secretKey = `lighthouse.explorerApiKey.${explorer.value}`;
       if (!apiKey) {
-        await deps.secrets.delete("lighthouse.explorerApiKey");
-        deps.explorerClient.setApiKey(undefined);
-        void vscode.window.showInformationMessage("Lighthouse: Explorer API key cleared.");
+        await deps.secrets.delete(secretKey);
+        deps.explorerClient.setApiKey(explorer.value, undefined);
+        void vscode.window.showInformationMessage("Explorer API key cleared.");
         return;
       }
 
-      await deps.secrets.store("lighthouse.explorerApiKey", apiKey);
-      deps.explorerClient.setApiKey(apiKey);
-      void vscode.window.showInformationMessage("Lighthouse: Explorer API key saved.");
+      await deps.secrets.store(secretKey, apiKey);
+      deps.explorerClient.setApiKey(explorer.value, apiKey);
+      void vscode.window.showInformationMessage("Explorer API key saved.");
     }),
   );
 
@@ -138,11 +160,12 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
     vscode.commands.registerCommand(
       "lighthouse.revealOccurrences",
       async (args: AddressCommandArgs) => {
-        if (!args?.address) {
+        const address = getAddressFromArgs(args);
+        if (!address) {
           return;
         }
 
-        const occurrences = deps.addressBook.getOccurrences(args.address);
+        const occurrences = deps.addressBook.getOccurrences(address);
         if (occurrences.length === 0) {
           void vscode.window.showInformationMessage("Lighthouse: No occurrences found.");
           return;
@@ -181,8 +204,51 @@ export function registerCommands(context: vscode.ExtensionContext, deps: Command
     vscode.commands.registerCommand(
       "lighthouse.inspectAddress",
       async (args?: AddressCommandArgs) => {
-        await deps.inspector.open(args);
+        const address = args?.address ? getAddressFromArgs(args) : undefined;
+        await deps.inspector.open({ address, chainId: args?.chainId });
       },
     ),
   );
+}
+
+function getAddressFromArgs(args: AddressCommandArgs | { entry?: AddressBookEntry } | undefined): Address | undefined {
+  if (!args) {
+    return undefined;
+  }
+
+  if ((args as AddressCommandArgs).address) {
+    return (args as AddressCommandArgs).address;
+  }
+
+  const entry = (args as { entry?: AddressBookEntry }).entry;
+  return entry?.address;
+}
+
+async function selectChain(
+  settings: ReturnType<typeof getSettings>,
+  cached?: AddressResolution,
+  preferredChainId?: number,
+) {
+  if (!cached) {
+    return undefined;
+  }
+
+  if (preferredChainId && cached.perChain[preferredChainId]) {
+    return cached.perChain[preferredChainId];
+  }
+
+  const selected = await promptForChain(cached, "Select chain to open explorer");
+  if (selected) {
+    return selected;
+  }
+
+  if (hasMultipleCandidateChains(cached)) {
+    return undefined;
+  }
+
+  return cached.scan.chainsSucceeded[0]
+    ? cached.perChain[cached.scan.chainsSucceeded[0]]
+    : cached.scan.chainsAttempted[0]
+      ? cached.perChain[cached.scan.chainsAttempted[0]]
+      : undefined;
 }

@@ -38,46 +38,58 @@
     "commands": [
       {
         "command": "lighthouse.inspectAddress",
-        "title": "Lighthouse: Inspect Address..."
+        "title": "Inspect Address...",
+        "category": "Lighthouse"
       },
       {
         "command": "lighthouse.openExplorer",
-        "title": "Lighthouse: Open Explorer"
+        "title": "Open Explorer",
+        "category": "Lighthouse"
       },
       {
         "command": "lighthouse.copyAddress",
-        "title": "Lighthouse: Copy Address"
+        "title": "Copy Address",
+        "category": "Lighthouse"
       },
       {
         "command": "lighthouse.addToAddressBook",
-        "title": "Lighthouse: Add to Address Book"
+        "title": "Add to Address Book",
+        "category": "Lighthouse",
+        "icon": "$(pin)"
       },
       {
         "command": "lighthouse.removeFromAddressBook",
-        "title": "Lighthouse: Remove from Address Book"
+        "title": "Remove from Address Book",
+        "category": "Lighthouse",
+        "icon": "$(x)"
       },
       {
         "command": "lighthouse.reindexWorkspace",
-        "title": "Lighthouse: Re-index Workspace Addresses"
+        "title": "Re-index Workspace Addresses",
+        "category": "Lighthouse"
       },
       {
         "command": "lighthouse.revealOccurrences",
-        "title": "Lighthouse: Reveal Address Occurrences"
+        "title": "Reveal Address Occurrences",
+        "category": "Lighthouse"
       },
       {
         "command": "lighthouse.clearCache",
-        "title": "Lighthouse: Clear Cache"
+        "title": "Clear Cache",
+        "category": "Lighthouse"
       },
       {
         "command": "lighthouse.setExplorerApiKey",
-        "title": "Lighthouse: Set Explorer API Key"
+        "title": "Set Explorer API Key",
+        "category": "Lighthouse"
       }
     ],
     "views": {
       "explorer": [
         {
           "id": "lighthouseAddressBook",
-          "name": "Lighthouse Address Book"
+          "name": "Address Book",
+          "icon": "media/lighthouse.svg"
         }
       ]
     },
@@ -127,7 +139,13 @@
         },
         {
           "command": "lighthouse.removeFromAddressBook",
-          "when": "view == lighthouseAddressBook && viewItem == lighthousePinnedAddress"
+          "when": "view == lighthouseAddressBook && viewItem == lighthousePinnedAddress",
+          "group": "inline"
+        },
+        {
+          "command": "lighthouse.addToAddressBook",
+          "when": "view == lighthouseAddressBook && viewItem == lighthouseIndexedAddress",
+          "group": "inline"
         }
       ]
     },
@@ -203,6 +221,11 @@
           "type": "number",
           "default": 86400,
           "description": "Cache TTL in seconds."
+        },
+        "lighthouse.net.maxConcurrentRequests": {
+          "type": "number",
+          "default": 8,
+          "description": "Maximum concurrent address resolves in the active document."
         },
         "lighthouse.security.respectWorkspaceTrust": {
           "type": "boolean",

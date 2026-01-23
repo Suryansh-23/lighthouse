@@ -26,8 +26,10 @@ export class WorkspaceIndexer {
 
     const exclude = "**/{node_modules,dist,out,coverage,.git}/**";
     const uris = await vscode.workspace.findFiles(include, exclude);
-    for (const uri of uris) {
-      await this.scanUri(uri);
+    const batchSize = 6;
+    for (let i = 0; i < uris.length; i += batchSize) {
+      const batch = uris.slice(i, i + batchSize);
+      await Promise.all(batch.map(uri => this.scanUri(uri)));
     }
   }
 

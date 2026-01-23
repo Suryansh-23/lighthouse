@@ -16,10 +16,12 @@ Purpose: onboarding notes and working rules for agents in this repo.
 - Monorepo scaffold is in place with pnpm workspaces.
 - Packages:
   - `packages/extension` (VS Code extension)
+  - `packages/engine` (core logic reusable outside VS Code)
   - `packages/shared` (types/schemas)
   - `packages/webview` (inspector UI build output placeholder)
 - Root tooling: `tsconfig.base.json`, ESLint, Prettier, GitHub Actions CI.
-- Extension structure: `src/core` (settings/extraction), `src/data` (cache/rpc), `src/domain` (resolver/enrichers/indexer), `src/ui` (hover/commands/codelens/address-book/inspector/diagnostics).
+- Extension structure: `src/core` (settings/extraction), `src/data` (cache/address book), `src/domain` (indexer), `src/ui` (hover/commands/codelens/address-book/inspector/diagnostics).
+- Engine structure: `src` exports chain config, resolver, enrichers, RPC, explorer/DefiLlama clients.
 
 ## Commands (build/lint/test)
 - Install: `pnpm install`
@@ -28,8 +30,12 @@ Purpose: onboarding notes and working rules for agents in this repo.
 - Test all packages: `pnpm test`
 - Format: `pnpm format`
 - Format check: `pnpm format:check`
+- Extension build: `pnpm extension:build`
+- Extension dev (open Extension Host): `pnpm extension:dev`
+- Extension package (VSIX): `pnpm extension:package`
+- Extension install (VSIX): `pnpm extension:install`
 - Single extension test (mocha):
-  - `pnpm --filter @lighthouse/extension test -- --grep "<test name>"`
+  - `pnpm --filter lighthouse-extension test -- --grep "<test name>"`
 - If a different runner is introduced (vitest/jest), update this section.
 
 ## Code style guidelines
@@ -111,6 +117,7 @@ Purpose: onboarding notes and working rules for agents in this repo.
 
 ## Testing guidance
 - Extension tests live in `packages/extension/src/test` and run via `@vscode/test-electron`.
+- Engine tests live in `packages/engine/test` and run via `pnpm --filter @lighthouse/engine test`.
 - Add tests alongside features; prefer unit tests for core logic.
 - Keep tests deterministic; mock RPC/explorer/DefiLlama calls.
 
@@ -121,6 +128,7 @@ Purpose: onboarding notes and working rules for agents in this repo.
 - Phase 3 complete: ERC detection, proxy heuristics, explorer metadata, and DefiLlama enrichment.
 - Phase 4 complete: inspector webview with overview/chains/contract/token/occurrences/notes panels.
 - Phase 5 in progress: diagnostics + code actions implemented; optional LSP pending.
+- Core engine is now in `packages/engine` and reused by the extension.
 
 ## Linting and formatting
 - Follow ESLint/Prettier once added; do not hand-format against them.

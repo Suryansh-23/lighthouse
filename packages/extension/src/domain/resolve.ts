@@ -7,13 +7,14 @@ import { getSettings } from "../core/settings";
 import { toAbortSignal } from "../core/cancellation";
 import { CacheStore } from "../data/cache-store";
 import { RpcClient } from "../data/rpc-client";
+import { RpcPool } from "../data/rpc-pool";
 
 interface ResolveOptions {
   token?: vscode.CancellationToken;
 }
 
 export class AddressResolver {
-  constructor(private readonly cache: CacheStore) {}
+  constructor(private readonly cache: CacheStore, private readonly rpcPool: RpcPool) {}
 
   async resolve(address: Address, options: ResolveOptions = {}): Promise<AddressResolution> {
     const cached = this.cache.get(address);
@@ -27,16 +28,18 @@ export class AddressResolver {
     const perChain: Record<ChainId, ChainAddressInfo> = {};
 
     const tasks = chains.map(async chain => {
-      const rpcUrl = chain.rpcs[0];
-      if (!rpcUrl) {
+      const rpcHealth = this.rpcPool.pick(chain);
+      if (!rpcHealth) {
         return { chainId: chain.chainId, reason: "no rpc configured" };
       }
 
-      const rpc = new RpcClient(chain.chainId, rpcUrl);
+      const rpc = new RpcClient(chain.chainId, rpcHealth.url);
       const signal = toAbortSignal(options.token);
 
       try {
+        const startedAt = Date.now();
         const code = await rpc.getCode(address, signal);
+        this.rpcPool.reportSuccess(chain.chainId, rpcHealth.url, Date.now() - startedAt);
         const isContract = code !== "0x";
         const info: ChainAddressInfo = {
           chainId: chain.chainId,
@@ -48,6 +51,7 @@ export class AddressResolver {
         perChain[chain.chainId] = info;
         return { chainId: chain.chainId };
       } catch (error) {
+        this.rpcPool.reportFailure(chain.chainId, rpcHealth.url);
         return {
           chainId: chain.chainId,
           reason: error instanceof Error ? error.message : "unknown error",

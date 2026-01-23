@@ -1,4 +1,4 @@
-import type * as vscode from "vscode";
+import * as vscode from "vscode";
 
 import type { Address } from "@lighthouse/shared";
 
@@ -7,6 +7,11 @@ import { normalizeAddress } from "./addresses";
 export const ADDRESS_REGEX = /0x[a-fA-F0-9]{40}/g;
 
 export interface AddressHit {
+  address: Address;
+  range: vscode.Range;
+}
+
+export interface AddressOccurrence {
   address: Address;
   range: vscode.Range;
 }
@@ -42,4 +47,25 @@ export function extractAddressAtPosition(
   }
 
   return { address: normalized, range };
+}
+
+export function extractAddressOccurrences(doc: vscode.TextDocument): AddressOccurrence[] {
+  const text = doc.getText();
+  const occurrences: AddressOccurrence[] = [];
+
+  ADDRESS_REGEX.lastIndex = 0;
+  for (const match of text.matchAll(ADDRESS_REGEX)) {
+    const raw = match[0];
+    const index = match.index ?? 0;
+    const normalized = normalizeAddress(raw);
+    if (!normalized) {
+      continue;
+    }
+
+    const start = doc.positionAt(index);
+    const end = doc.positionAt(index + raw.length);
+    occurrences.push({ address: normalized, range: new vscode.Range(start, end) });
+  }
+
+  return occurrences;
 }

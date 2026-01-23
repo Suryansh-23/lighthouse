@@ -9,5 +9,8 @@ suite("Extension activation", () => {
     assert.ok(commands.includes("lighthouse.openExplorer"));
     assert.ok(commands.includes("lighthouse.copyAddress"));
     assert.ok(commands.includes("lighthouse.addToAddressBook"));
+    assert.ok(commands.includes("lighthouse.removeFromAddressBook"));
+    assert.ok(commands.includes("lighthouse.reindexWorkspace"));
+    assert.ok(commands.includes("lighthouse.revealOccurrences"));
   });
 });

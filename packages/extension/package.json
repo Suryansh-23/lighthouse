@@ -10,11 +10,21 @@
   },
   "categories": ["Other"],
   "main": "./dist/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Background indexing and networking are disabled until the workspace is trusted."
+    }
+  },
   "activationEvents": [
     "onCommand:lighthouse.inspectAddress",
     "onCommand:lighthouse.openExplorer",
     "onCommand:lighthouse.copyAddress",
     "onCommand:lighthouse.addToAddressBook",
+    "onCommand:lighthouse.removeFromAddressBook",
+    "onCommand:lighthouse.reindexWorkspace",
+    "onCommand:lighthouse.revealOccurrences",
+    "onView:lighthouseAddressBook",
     "onLanguage:typescript",
     "onLanguage:javascript",
     "onLanguage:solidity",
@@ -39,8 +49,28 @@
       {
         "command": "lighthouse.addToAddressBook",
         "title": "Lighthouse: Add to Address Book"
+      },
+      {
+        "command": "lighthouse.removeFromAddressBook",
+        "title": "Lighthouse: Remove from Address Book"
+      },
+      {
+        "command": "lighthouse.reindexWorkspace",
+        "title": "Lighthouse: Re-index Workspace Addresses"
+      },
+      {
+        "command": "lighthouse.revealOccurrences",
+        "title": "Lighthouse: Reveal Address Occurrences"
       }
     ],
+    "views": {
+      "explorer": [
+        {
+          "id": "lighthouseAddressBook",
+          "name": "Lighthouse Address Book"
+        }
+      ]
+    },
     "configuration": {
       "type": "object",
       "title": "Lighthouse",
@@ -50,10 +80,21 @@
           "default": true,
           "description": "Enable Lighthouse features."
         },
+        "lighthouse.detection.fileGlobs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["**/*.{ts,tsx,js,jsx,sol,rs,go,py,yml,yaml,json,toml,md}"],
+          "description": "File globs to scan for addresses."
+        },
         "lighthouse.ui.hover.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Enable hover cards for addresses."
+        },
+        "lighthouse.ui.codelens.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable CodeLens for addresses."
         },
         "lighthouse.chains.mode": {
           "type": "string",
@@ -72,6 +113,21 @@
           "default": [],
           "description": "User-defined chain configurations."
         },
+        "lighthouse.rpc.roundRobin": {
+          "type": "boolean",
+          "default": true,
+          "description": "Rotate across RPC endpoints per chain."
+        },
+        "lighthouse.rpc.cooldownBaseMs": {
+          "type": "number",
+          "default": 1000,
+          "description": "Base cooldown in milliseconds for failing RPCs."
+        },
+        "lighthouse.rpc.maxRetriesBeforeDisable": {
+          "type": "number",
+          "default": 10,
+          "description": "Disable an RPC after this many failures."
+        },
         "lighthouse.explorer.default": {
           "type": "string",
           "enum": ["routescan", "blockscout", "etherscan"],
@@ -87,6 +143,11 @@
           "type": "number",
           "default": 86400,
           "description": "Cache TTL in seconds."
+        },
+        "lighthouse.security.respectWorkspaceTrust": {
+          "type": "boolean",
+          "default": true,
+          "description": "Disable background indexing in untrusted workspaces."
         }
       }
     }

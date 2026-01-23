@@ -116,7 +116,9 @@ Purpose: onboarding notes and working rules for agents in this repo.
 
 ## Phase status
 - Phase 0 complete: pnpm workspace + extension/shared/webview scaffolds.
-- Phase 1 in progress: address extraction, cache store, RPC resolver, hover provider, and commands are implemented.
+- Phase 1 complete: address extraction, cache store, RPC resolver, hover provider, and commands are implemented.
+- Phase 2 complete: CodeLens, address book tree view, workspace indexer, and RPC pool rotation/cooldown.
+- Phase 3 in progress: ERC detection, explorer metadata, and DefiLlama enrichment.
 
 ## Linting and formatting
 - Follow ESLint/Prettier once added; do not hand-format against them.

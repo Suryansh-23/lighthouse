@@ -1,6 +1,6 @@
 import type { Address } from "@lighthouse/shared";
 
-import type { ChainConfig } from "./chains";
+import type { ChainConfig, ExplorerKind } from "./chains";
 
 interface ExplorerSourceResult {
   ContractName?: string;
@@ -14,6 +14,18 @@ interface ExplorerResponse {
   result: ExplorerSourceResult[];
 }
 
+interface ContractCreationResult {
+  contractAddress?: string;
+  contractCreator?: string;
+  txHash?: string;
+}
+
+interface ContractCreationResponse {
+  status: string;
+  message: string;
+  result: ContractCreationResult[];
+}
+
 export interface ExplorerMetadata {
   verified?: boolean;
   contractName?: string;
@@ -22,14 +34,34 @@ export interface ExplorerMetadata {
 }
 
 export class ExplorerClient {
-  constructor(private apiKey?: string) {}
+  private readonly apiKeys = new Map<ExplorerKind, string>();
 
-  setApiKey(value?: string) {
-    this.apiKey = value;
+  constructor(initial?: Partial<Record<ExplorerKind, string>>) {
+    if (initial) {
+      for (const [kind, value] of Object.entries(initial)) {
+        if (value) {
+          this.apiKeys.set(kind as ExplorerKind, value);
+        }
+      }
+    }
+  }
+
+  setApiKey(kind: ExplorerKind, value?: string) {
+    if (!value) {
+      this.apiKeys.delete(kind);
+      return;
+    }
+
+    this.apiKeys.set(kind, value);
   }
 
   async getContractMetadata(chain: ChainConfig, address: Address): Promise<ExplorerMetadata | undefined> {
-    if (!chain.explorer?.apiBaseUrl || !this.apiKey) {
+    if (!chain.explorer?.apiBaseUrl) {
+      return undefined;
+    }
+
+    const apiKey = chain.explorer.kind ? this.apiKeys.get(chain.explorer.kind) : undefined;
+    if (!apiKey) {
       return undefined;
     }
 
@@ -37,7 +69,7 @@ export class ExplorerClient {
     url.searchParams.set("module", "contract");
     url.searchParams.set("action", "getsourcecode");
     url.searchParams.set("address", address);
-    url.searchParams.set("apikey", this.apiKey);
+    url.searchParams.set("apikey", apiKey);
 
     const response = await fetch(url.toString());
     if (!response.ok) {
@@ -58,6 +90,35 @@ export class ExplorerClient {
       abi: verified && result.ABI ? safeParseAbi(result.ABI) : undefined,
       sourceUrl: chain.explorer.baseUrl ? `${chain.explorer.baseUrl}/address/${address}` : undefined,
     };
+  }
+
+  async getContractCreation(chain: ChainConfig, address: Address): Promise<ContractCreationResult | undefined> {
+    if (!chain.explorer?.apiBaseUrl) {
+      return undefined;
+    }
+
+    const apiKey = chain.explorer.kind ? this.apiKeys.get(chain.explorer.kind) : undefined;
+    if (!apiKey) {
+      return undefined;
+    }
+
+    const url = new URL(chain.explorer.apiBaseUrl);
+    url.searchParams.set("module", "contract");
+    url.searchParams.set("action", "getcontractcreation");
+    url.searchParams.set("contractaddresses", address);
+    url.searchParams.set("apikey", apiKey);
+
+    const response = await fetch(url.toString());
+    if (!response.ok) {
+      return undefined;
+    }
+
+    const payload = (await response.json()) as ContractCreationResponse;
+    if (payload.status !== "1" || !payload.result?.length) {
+      return undefined;
+    }
+
+    return payload.result[0];
   }
 }
 

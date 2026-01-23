@@ -33,6 +33,14 @@ export class RpcClient {
     return this.request<string>("eth_getStorageAt", [address, slot, "latest"], signal);
   }
 
+  async getTransactionReceipt(txHash: string, signal?: AbortSignal): Promise<{ blockNumber?: string } | null> {
+    return this.request<{ blockNumber?: string } | null>(
+      "eth_getTransactionReceipt",
+      [txHash],
+      signal,
+    );
+  }
+
   async call(
     address: string,
     data: string,

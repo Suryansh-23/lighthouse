@@ -28,8 +28,17 @@ export function extractAddressMatches(text: string): AddressMatch[] {
   for (const match of text.matchAll(ADDRESS_REGEX)) {
     const raw = match[0];
     const index = match.index ?? 0;
+    const prev = index > 0 ? text[index - 1] : "";
+    const next = text[index + raw.length] ?? "";
+    if ((prev && isHexChar(prev)) || (next && isHexChar(next))) {
+      continue;
+    }
     const normalized = normalizeAddress(raw);
     matches.push({ raw, normalized, index, length: raw.length });
   }
   return matches;
+}
+
+function isHexChar(value: string): boolean {
+  return /[a-fA-F0-9]/.test(value);
 }

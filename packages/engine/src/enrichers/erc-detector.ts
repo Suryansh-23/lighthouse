@@ -38,14 +38,30 @@ export class ErcDetectorEnricher implements Enricher {
     const supports1155 = await supportsInterface(ctx, ERC1155_INTERFACE);
 
     if (supports1155) {
+      const [name, symbol] = await Promise.all([
+        callString(ctx, ERC20_ABI, "name"),
+        callString(ctx, ERC20_ABI, "symbol"),
+      ]);
       updateClassification(ctx, "ERC1155", 0.9);
-      ctx.info.token = { standard: "ERC1155" };
+      ctx.info.token = {
+        standard: "ERC1155",
+        name: name ?? undefined,
+        symbol: symbol ?? undefined,
+      };
       return;
     }
 
     if (supports721) {
+      const [name, symbol] = await Promise.all([
+        callString(ctx, ERC20_ABI, "name"),
+        callString(ctx, ERC20_ABI, "symbol"),
+      ]);
       updateClassification(ctx, "ERC721", 0.9);
-      ctx.info.token = { standard: "ERC721" };
+      ctx.info.token = {
+        standard: "ERC721",
+        name: name ?? undefined,
+        symbol: symbol ?? undefined,
+      };
       return;
     }
 

@@ -10,7 +10,7 @@ Purpose: onboarding notes and working rules for agents in this repo.
 
 ## Key docs
 - `SPEC.md` is the authoritative product + architecture spec.
-- `README.md` is currently minimal; rely on `SPEC.md` for context.
+- `README.md` contains setup, usage, and validation guidance.
 
 ## Repository layout (current state)
 - Monorepo scaffold is in place with pnpm workspaces.
@@ -20,7 +20,7 @@ Purpose: onboarding notes and working rules for agents in this repo.
   - `packages/shared` (types/schemas)
   - `packages/webview` (inspector UI build output placeholder)
 - Root tooling: `tsconfig.base.json`, ESLint, Prettier, GitHub Actions CI.
-- Extension structure: `src/core` (settings/extraction), `src/data` (cache/address book), `src/domain` (indexer), `src/ui` (hover/commands/codelens/address-book/inspector/diagnostics).
+- Extension structure: `src/core` (settings/extraction), `src/data` (cache/address book), `src/domain` (indexer/document-resolver), `src/ui` (hover/commands/codelens/address-book/inspector/diagnostics/labels/chain-selection).
 - Engine structure: `src` exports chain config, resolver, enrichers, RPC, explorer/DefiLlama clients.
 
 ## Commands (build/lint/test)
@@ -126,9 +126,13 @@ Purpose: onboarding notes and working rules for agents in this repo.
 - Phase 1 complete: address extraction, cache store, RPC resolver, hover provider, and commands are implemented.
 - Phase 2 complete: CodeLens, address book tree view, workspace indexer, and RPC pool rotation/cooldown.
 - Phase 3 complete: ERC detection, proxy heuristics, explorer metadata, and DefiLlama enrichment.
-- Phase 4 complete: inspector webview with overview/chains/contract/token/occurrences/notes panels.
+- Phase 4 complete: explorer panel with embedded explorer and notes.
 - Phase 5 in progress: diagnostics + code actions implemented; optional LSP pending.
 - Core engine is now in `packages/engine` and reused by the extension.
+
+## Explorer + notes flow
+- Inspecting an address opens a webview panel with the selected explorer embedded.
+- Notes are stored in workspace storage and shown in hover + address book.
 
 ## Linting and formatting
 - Follow ESLint/Prettier once added; do not hand-format against them.

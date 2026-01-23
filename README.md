@@ -8,7 +8,7 @@ address book with cache-backed enrichment.
 - Hover cards with cached address intelligence and quick actions
 - CodeLens summary line for fast scanning in config files
 - Address book tree view with pinned and indexed addresses
-- Inspector webview with overview, chains, contract, token, and occurrences
+- Explorer panel with embedded explorer + notes + chain selection
 - ERC detection, proxy heuristics, explorer metadata, and DefiLlama pricing
 - Workspace-scoped cache and optional background indexing
 - Engine package usable outside VS Code for future IDEs/CLI tools
@@ -55,15 +55,15 @@ pnpm extension:install
 The install command uses `code --install-extension` under the hood.
 
 ## Commands
-- `Lighthouse: Inspect Address...`
-- `Lighthouse: Open Explorer`
-- `Lighthouse: Copy Address`
-- `Lighthouse: Add to Address Book`
-- `Lighthouse: Remove from Address Book`
-- `Lighthouse: Reveal Address Occurrences`
-- `Lighthouse: Re-index Workspace Addresses`
-- `Lighthouse: Clear Cache`
-- `Lighthouse: Set Explorer API Key`
+- `Inspect Address...`
+- `Open Explorer`
+- `Copy Address`
+- `Add to Address Book`
+- `Remove from Address Book`
+- `Reveal Address Occurrences`
+- `Re-index Workspace Addresses`
+- `Clear Cache`
+- `Set Explorer API Key`
 
 ## Settings
 ```jsonc
@@ -81,6 +81,7 @@ The install command uses `code --install-extension` under the hood.
   "lighthouse.explorer.default": "routescan",
   "lighthouse.explorer.openInExternalBrowser": true,
   "lighthouse.cache.ttlSeconds": 86400,
+  "lighthouse.net.maxConcurrentRequests": 8,
   "lighthouse.security.respectWorkspaceTrust": true
 }
 ```
@@ -96,21 +97,26 @@ CodeLens is cache-only and never triggers network calls.
 
 ### Address book
 Open the "Lighthouse Address Book" view in the Explorer panel. Pinned addresses
-appear at the top, indexed addresses appear below. Use context menu actions to
-open, copy, inspect, reveal occurrences, or remove pinned entries.
+appear at the top, indexed addresses appear below. Expand an address to resolve
+and view cached details. Use context menu actions to open, copy, inspect, reveal
+occurrences, or remove pinned entries. Inline pin buttons appear for indexed
+items.
 
-### Inspector
-Run `Lighthouse: Inspect Address...` or click Inspect from hover/CodeLens.
-The inspector webview provides deep details (overview, chains, contract, token,
-occurrences, notes). It reuses cached data and resolves on demand.
+### Explorer panel + notes
+Run `Inspect Address...` or click Inspect from hover/CodeLens.
+Lighthouse opens a webview panel that embeds the selected explorer and a notes
+editor. If the address resolves on multiple chains, you will be prompted to
+select the chain before the explorer opens. Notes are stored in workspace
+storage and appear in hover cards.
 
 ### Diagnostics
 Invalid addresses are marked with a warning. Non-checksummed addresses show an
 info diagnostic with a quick fix to normalize the checksum.
 
 ### Explorer metadata
-Provide an API key with `Lighthouse: Set Explorer API Key` to enable verified
-contract metadata. The key is stored in VS Code secrets.
+Provide an API key with `Set Explorer API Key` to enable verified contract
+metadata. You will first choose the explorer provider, then enter the key. Keys
+are stored in VS Code secrets.
 
 ## Engine usage (non-VS Code)
 The engine package hosts core logic (resolver, enrichers, RPC client, chain
@@ -125,6 +131,11 @@ config). It is designed for reuse in future IDE integrations or CLI tooling.
 ## Validation plan
 Use `docs/local-validation-plan.md` for step-by-step validation and feedback
 collection when testing features locally.
+
+## Cache location
+Lighthouse stores cache and address-book data in VS Code workspace storage
+(`context.storageUri`). This is managed by VS Code, so it will not appear as a
+regular `.vscode` folder inside your repo.
 
 ## Troubleshooting
 - If CI fails due to `pnpm-lock.yaml`, run `pnpm install` and commit the lockfile.

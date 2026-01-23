@@ -1,0 +1,11 @@
+{
+  "name": "@lighthouse/webview",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "node -e \"process.stdout.write('webview: no tests\\n')\""
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "name": "@lighthouse/extension",
+  "displayName": "Lighthouse",
+  "description": "EVM address intelligence for VS Code",
+  "version": "0.0.1",
+  "private": true,
+  "publisher": "lighthouse",
+  "engines": {
+    "vscode": "^1.88.0"
+  },
+  "categories": ["Other"],
+  "main": "./dist/extension.js",
+  "activationEvents": ["onCommand:lighthouse.inspectAddress"],
+  "contributes": {
+    "commands": [
+      {
+        "command": "lighthouse.inspectAddress",
+        "title": "Lighthouse: Inspect Address..."
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json --watch",
+    "lint": "eslint \"src/**/*.ts\"",
+    "test": "pnpm run build && node ./dist/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.12.7",
+    "@types/vscode": "^1.88.0",
+    "@vscode/test-electron": "^2.4.0",
+    "mocha": "^10.4.0"
+  }
+}

@@ -13,23 +13,22 @@ Purpose: onboarding notes and working rules for agents in this repo.
 - `README.md` is currently minimal; rely on `SPEC.md` for context.
 
 ## Repository layout (current state)
-- Repo is a spec-only scaffold right now; no `package.json` present.
-- Expected future structure (per spec Phase 0):
+- Monorepo scaffold is in place with pnpm workspaces.
+- Packages:
   - `packages/extension` (VS Code extension)
   - `packages/shared` (types/schemas)
-  - `packages/webview` (inspector UI build output)
+  - `packages/webview` (inspector UI build output placeholder)
+- Root tooling: `tsconfig.base.json`, ESLint, Prettier, GitHub Actions CI.
 
 ## Commands (build/lint/test)
-- Current state: no build, lint, or test scripts are configured yet.
-- When the scaffold lands, always prefer scripts in `package.json` (root or `packages/extension`).
-- Expected commands once scaffold exists (verify in scripts before running):
-  - Install: `npm install` or `pnpm install`
-  - Build: `npm run build` or `pnpm build`
-  - Lint: `npm run lint` or `pnpm lint`
-  - Tests: `npm test` or `pnpm test`
-- Single test (likely mocha via `@vscode/test-electron`, per spec):
-  - `npm test -- -g "<test name>"`
-  - `pnpm test -- --grep "<test name>"`
+- Install: `pnpm install`
+- Build all packages: `pnpm build`
+- Lint all packages: `pnpm lint`
+- Test all packages: `pnpm test`
+- Format: `pnpm format`
+- Format check: `pnpm format:check`
+- Single extension test (mocha):
+  - `pnpm --filter @lighthouse/extension test -- --grep "<test name>"`
 - If a different runner is introduced (vitest/jest), update this section.
 
 ## Code style guidelines
@@ -109,11 +108,10 @@ Purpose: onboarding notes and working rules for agents in this repo.
 - Two-tier indexing: on-demand (open docs) + background scan.
 - Skip huge files and respect `files.maxMemoryForLargeFilesMB`.
 
-## Testing guidance (until tooling exists)
+## Testing guidance
+- Extension tests live in `packages/extension/src/test` and run via `@vscode/test-electron`.
 - Add tests alongside features; prefer unit tests for core logic.
-- For VS Code integration tests, use `@vscode/test-electron`.
 - Keep tests deterministic; mock RPC/explorer/DefiLlama calls.
-- If tests are not configured yet, create minimal harness before adding many tests.
 
 ## Linting and formatting
 - Follow ESLint/Prettier once added; do not hand-format against them.

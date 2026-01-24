@@ -25,6 +25,15 @@ interface SearchResultItem {
   entityType: SearchEntityType;
   entityValue: string;
   copyValue?: string;
+  score: number;
+  marketCap?: number;
+  priority?: number;
+  reputation?: string;
+  symbol?: string;
+  name?: string;
+  exchangeRate?: number;
+  isVerified?: boolean;
+  tokenType?: string;
 }
 
 interface SearchResponse {
@@ -40,9 +49,13 @@ interface BlockscoutToken {
   name: string;
   symbol: string;
   token_type: string;
-  exchange_rate?: string;
-  icon_url?: string;
+  exchange_rate?: string | null;
+  icon_url?: string | null;
+  priority?: number;
+  reputation?: string | null;
+  circulating_market_cap?: string | null;
   is_smart_contract_verified?: boolean;
+  is_verified_via_admin_panel?: boolean;
   total_supply?: string;
 }
 
@@ -51,6 +64,8 @@ interface BlockscoutAddress {
   address_hash: string;
   name?: string;
   is_smart_contract_verified?: boolean;
+  reputation?: string | null;
+  priority?: number;
 }
 
 interface BlockscoutBlock {
@@ -58,12 +73,14 @@ interface BlockscoutBlock {
   block_hash: string;
   block_number?: number;
   timestamp?: string;
+  priority?: number;
 }
 
 interface BlockscoutTransaction {
   type: "transaction";
   transaction_hash: string;
   timestamp?: string;
+  priority?: number;
 }
 
 interface SearchQuickPickItem extends vscode.QuickPickItem {
@@ -161,10 +178,10 @@ class SearchQuickPick {
         return;
       }
       if (response) {
-        this.resultsByChain.set(
-          chain.chainId,
-          response.items.map((item) => toSearchItem(chain, item)),
-        );
+        const mapped = response.items
+          .map((item) => toSearchItem(chain, item, this.currentQuery))
+          .filter(isSearchResultItem);
+        this.resultsByChain.set(chain.chainId, sortResults(mapped, this.currentQuery));
         if (response.next_page_params && hasNextParams(response.next_page_params)) {
           this.nextPageByChain.set(chain.chainId, response.next_page_params);
         }
@@ -199,8 +216,13 @@ class SearchQuickPick {
       }
       if (response) {
         const existing = this.resultsByChain.get(chain.chainId) ?? [];
-        const nextItems = response.items.map((item) => toSearchItem(chain, item));
-        this.resultsByChain.set(chain.chainId, [...existing, ...nextItems]);
+        const nextItems = response.items
+          .map((item) => toSearchItem(chain, item, this.currentQuery))
+          .filter(isSearchResultItem);
+        this.resultsByChain.set(
+          chain.chainId,
+          sortResults([...existing, ...nextItems], this.currentQuery),
+        );
         if (response.next_page_params && hasNextParams(response.next_page_params)) {
           this.nextPageByChain.set(chain.chainId, response.next_page_params);
         } else {
@@ -225,7 +247,11 @@ class SearchQuickPick {
     if (!selected.data) {
       return;
     }
-    void this.openItem(selected.data);
+    const item = selected.data;
+    if (this.quickPick) {
+      this.quickPick.hide();
+    }
+    void this.promptAction(item);
   }
 
   private async onItemButton(event: vscode.QuickPickItemButtonEvent<SearchQuickPickItem>) {
@@ -250,6 +276,31 @@ class SearchQuickPick {
       settings.explorer.default,
     );
     await vscode.env.openExternal(vscode.Uri.parse(url));
+  }
+
+  private async promptAction(item: SearchResultItem) {
+    const options: Array<{ label: string; action: "open" | "copy" }> = [
+      { label: "Open in Explorer", action: "open" },
+    ];
+    if (item.copyValue) {
+      options.push({ label: "Copy Address/Hash", action: "copy" });
+    }
+
+    const choice = await vscode.window.showQuickPick(options, {
+      title: "Lighthouse Search",
+      placeHolder: item.title,
+    });
+    if (!choice) {
+      return;
+    }
+    if (choice.action === "open") {
+      await this.openItem(item);
+      return;
+    }
+    if (item.copyValue) {
+      await vscode.env.clipboard.writeText(item.copyValue);
+      void vscode.window.showInformationMessage("Lighthouse: Copied to clipboard.");
+    }
   }
 
   private setLoading(loading: boolean) {
@@ -329,26 +380,67 @@ function hasNextParams(params: Record<string, string | number | null>): boolean 
   );
 }
 
-function toSearchItem(chain: SearchChain, item: BlockscoutItem): SearchResultItem {
+function toSearchItem(
+  chain: SearchChain,
+  item: BlockscoutItem,
+  query: string,
+): SearchResultItem | undefined {
+  const reputation = getReputation(item);
+  if (reputation && reputation !== "ok") {
+    return undefined;
+  }
+
   if (item.type === "token") {
+    const marketCap = parseNumber(item.circulating_market_cap);
+    const exchangeRate = parseNumber(item.exchange_rate);
+    const title =
+      item.symbol && item.name && item.symbol !== item.name
+        ? `${item.symbol} - ${item.name}`
+        : item.symbol || item.name || "Token";
     return {
       id: `${chain.chainId}:${item.type}:${item.address_hash}`,
       chainId: chain.chainId,
       chainName: chain.name,
       kind: item.type,
-      title: item.symbol || item.name || "Token",
-      subtitle: item.name ? `${item.name} | ${item.token_type}` : item.token_type,
+      title,
+      subtitle: item.name ? item.name : undefined,
       badge: item.is_smart_contract_verified ? "Verified" : "Token",
-      iconUrl: item.icon_url,
+      iconUrl: item.icon_url ?? undefined,
       entityType: "address",
       entityValue: item.address_hash,
       copyValue: item.address_hash,
+      score: scoreItem(
+        {
+          kind: item.type,
+          title: item.name || item.symbol || "",
+          symbol: item.symbol,
+          name: item.name,
+          priority: item.priority,
+          marketCap,
+          exchangeRate,
+          isVerified: item.is_smart_contract_verified,
+        },
+        query,
+      ),
+      marketCap,
+      priority: item.priority,
+      reputation: item.reputation ?? undefined,
+      symbol: item.symbol,
+      name: item.name,
+      exchangeRate,
+      isVerified: item.is_smart_contract_verified,
+      tokenType: item.token_type,
     };
   }
 
   if (item.type === "address" || item.type === "contract") {
     const title = item.name ? item.name : shortenHash(item.address_hash);
     const subtitle = item.name ? item.address_hash : "";
+    const badge = item.is_smart_contract_verified
+      ? "Verified"
+      : item.type === "contract"
+        ? "Contract"
+        : "Address";
     return {
       id: `${chain.chainId}:${item.type}:${item.address_hash}`,
       chainId: chain.chainId,
@@ -356,14 +448,23 @@ function toSearchItem(chain: SearchChain, item: BlockscoutItem): SearchResultIte
       kind: item.type,
       title,
       subtitle,
-      badge: item.is_smart_contract_verified
-        ? "Verified"
-        : item.type === "contract"
-          ? "Contract"
-          : "Address",
+      badge,
       entityType: "address",
       entityValue: item.address_hash,
       copyValue: item.address_hash,
+      score: scoreItem(
+        {
+          kind: item.type,
+          title,
+          name: item.name,
+          priority: item.priority,
+          isVerified: item.is_smart_contract_verified,
+        },
+        query,
+      ),
+      priority: item.priority,
+      reputation: item.reputation ?? undefined,
+      isVerified: item.is_smart_contract_verified,
     };
   }
 
@@ -379,23 +480,42 @@ function toSearchItem(chain: SearchChain, item: BlockscoutItem): SearchResultIte
       entityType: "tx",
       entityValue: item.transaction_hash,
       copyValue: item.transaction_hash,
+      score: scoreItem(
+        {
+          kind: item.type,
+          title: item.transaction_hash,
+          priority: item.priority,
+        },
+        query,
+      ),
+      priority: item.priority,
     };
   }
 
   if (item.type === "block") {
+    const title = item.block_number
+      ? `Block #${item.block_number}`
+      : `Block ${shortenHash(item.block_hash)}`;
     return {
       id: `${chain.chainId}:${item.type}:${item.block_hash}`,
       chainId: chain.chainId,
       chainName: chain.name,
       kind: item.type,
-      title: item.block_number
-        ? `Block #${item.block_number}`
-        : `Block ${shortenHash(item.block_hash)}`,
+      title,
       subtitle: item.timestamp ?? "",
       badge: "Block",
       entityType: "block",
       entityValue: item.block_hash || String(item.block_number ?? ""),
       copyValue: item.block_hash || String(item.block_number ?? ""),
+      score: scoreItem(
+        {
+          kind: item.type,
+          title: String(item.block_number ?? item.block_hash),
+          priority: item.priority,
+        },
+        query,
+      ),
+      priority: item.priority,
     };
   }
 
@@ -408,6 +528,7 @@ function toSearchItem(chain: SearchChain, item: BlockscoutItem): SearchResultIte
     badge: "Unknown",
     entityType: "address",
     entityValue: "",
+    score: 0,
   };
 }
 
@@ -443,12 +564,22 @@ function toQuickPickItem(item: SearchResultItem): SearchQuickPickItem {
   if (item.badge) {
     descriptionParts.push(item.badge);
   }
+  if (item.kind === "token") {
+    if (item.tokenType) {
+      descriptionParts.push(item.tokenType);
+    }
+    const marketCap = formatMarketCap(item.marketCap);
+    if (marketCap) {
+      descriptionParts.push(marketCap);
+    }
+  }
   return {
     label: item.title,
     description: descriptionParts.join(" | "),
-    detail: item.subtitle,
+    detail: buildDetail(item),
     data: item,
     buttons: item.copyValue ? [COPY_BUTTON] : undefined,
+    iconPath: item.iconUrl ? vscode.Uri.parse(item.iconUrl) : iconForKind(item.kind),
   };
 }
 
@@ -476,4 +607,178 @@ function shortenHash(value: string): string {
 
 function createEmptyItem(label: string): SearchQuickPickItem {
   return { label, action: "empty", alwaysShow: true };
+}
+
+function parseNumber(value?: string | number | null): number | undefined {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  const num = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(num) ? num : undefined;
+}
+
+function isSearchResultItem(item: SearchResultItem | undefined): item is SearchResultItem {
+  return Boolean(item);
+}
+
+function getReputation(item: BlockscoutItem): string | undefined {
+  const reputation = (item as { reputation?: string | null }).reputation;
+  return reputation ?? undefined;
+}
+
+function sortResults(items: SearchResultItem[], query: string): SearchResultItem[] {
+  const normalized = query.toLowerCase();
+  return [...items].sort((a, b) => {
+    if (a.score !== b.score) {
+      return b.score - a.score;
+    }
+    const aMatch = exactMatchScore(a, normalized);
+    const bMatch = exactMatchScore(b, normalized);
+    if (aMatch !== bMatch) {
+      return bMatch - aMatch;
+    }
+    return a.title.localeCompare(b.title);
+  });
+}
+
+function exactMatchScore(item: SearchResultItem, query: string): number {
+  if (!query) {
+    return 0;
+  }
+  const fields = [item.symbol, item.name, item.title, item.subtitle]
+    .filter(Boolean)
+    .map((value) => String(value).toLowerCase());
+  if (fields.some((value) => value === query)) {
+    return 2;
+  }
+  if (fields.some((value) => value.startsWith(query))) {
+    return 1;
+  }
+  return 0;
+}
+
+function scoreItem(
+  input: {
+    kind: string;
+    title: string;
+    name?: string;
+    symbol?: string;
+    priority?: number;
+    marketCap?: number;
+    exchangeRate?: number;
+    isVerified?: boolean;
+  },
+  query: string,
+): number {
+  let score = baseKindScore(input.kind);
+  score += (input.priority ?? 0) * 25;
+  if (input.marketCap) {
+    score += Math.log10(input.marketCap + 1) * 40;
+  }
+  if (input.isVerified) {
+    score += 20;
+  }
+  if (input.exchangeRate) {
+    score += 5;
+  }
+  score += textMatchScore([input.title, input.name, input.symbol], query) * 120;
+  return score;
+}
+
+function baseKindScore(kind: string): number {
+  switch (kind) {
+    case "token":
+      return 1000;
+    case "contract":
+      return 850;
+    case "address":
+      return 800;
+    case "transaction":
+      return 650;
+    case "block":
+      return 500;
+    default:
+      return 0;
+  }
+}
+
+function textMatchScore(values: Array<string | undefined>, query: string): number {
+  if (!query) {
+    return 0;
+  }
+  const normalized = query.toLowerCase();
+  let score = 0;
+  for (const value of values) {
+    if (!value) {
+      continue;
+    }
+    const lowered = value.toLowerCase();
+    if (lowered === normalized) {
+      score = Math.max(score, 2);
+    } else if (lowered.startsWith(normalized)) {
+      score = Math.max(score, 1.4);
+    } else if (lowered.includes(normalized)) {
+      score = Math.max(score, 1);
+    }
+  }
+  return score;
+}
+
+function formatMarketCap(value?: number): string | undefined {
+  if (!value || value <= 0) {
+    return undefined;
+  }
+  if (value >= 1_000_000_000) {
+    return `$${(value / 1_000_000_000).toFixed(1)}B`;
+  }
+  if (value >= 1_000_000) {
+    return `$${(value / 1_000_000).toFixed(1)}M`;
+  }
+  if (value >= 1_000) {
+    return `$${(value / 1_000).toFixed(1)}K`;
+  }
+  return `$${value.toFixed(2)}`;
+}
+
+function formatExchangeRate(value?: number): string | undefined {
+  if (value === undefined || value === null || !Number.isFinite(value)) {
+    return undefined;
+  }
+  return `$${value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")}`;
+}
+
+function buildDetail(item: SearchResultItem): string | undefined {
+  const parts: string[] = [];
+  if (item.subtitle && item.subtitle !== item.title) {
+    parts.push(item.subtitle);
+  }
+  const marketCap = formatMarketCap(item.marketCap);
+  if (marketCap) {
+    parts.push(`MCap ${marketCap}`);
+  }
+  const price = formatExchangeRate(item.exchangeRate);
+  if (price) {
+    parts.push(`Price ${price}`);
+  }
+  if (item.copyValue && item.kind !== "token") {
+    parts.push(`Address ${item.copyValue}`);
+  }
+  return parts.length > 0 ? parts.join(" | ") : undefined;
+}
+
+function iconForKind(kind: string): vscode.ThemeIcon {
+  switch (kind) {
+    case "token":
+      return new vscode.ThemeIcon("symbol-variable");
+    case "contract":
+      return new vscode.ThemeIcon("symbol-class");
+    case "address":
+      return new vscode.ThemeIcon("symbol-constant");
+    case "transaction":
+      return new vscode.ThemeIcon("symbol-event");
+    case "block":
+      return new vscode.ThemeIcon("symbol-number");
+    default:
+      return new vscode.ThemeIcon("symbol-misc");
+  }
 }

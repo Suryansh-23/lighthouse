@@ -72,6 +72,7 @@ The install command uses `code --install-extension` under the hood.
 - `Re-index Workspace Addresses`
 - `Clear Cache`
 - `Set Explorer API Key`
+- `Search`
 
 ## Settings
 
@@ -123,6 +124,13 @@ Run `Open Explorer` from hover/CodeLens or the command palette.
 Lighthouse opens the selected explorer in your system browser. If the address
 resolves on multiple chains, you will be prompted to select the chain before the
 explorer opens.
+
+### Search
+
+Run `Search` to open the Lighthouse search panel. Results stream in from the
+Blockscout APIs across supported chains with live updates and pagination. Click
+any result to open it in your configured explorer, or use the copy button to
+grab the address/hash.
 
 ### Diagnostics
 

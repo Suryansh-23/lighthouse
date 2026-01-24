@@ -27,6 +27,7 @@
     "onCommand:lighthouse.revealOccurrences",
     "onCommand:lighthouse.clearCache",
     "onCommand:lighthouse.setExplorerApiKey",
+    "onCommand:lighthouse.search",
     "onView:lighthouseAddressBook",
     "onLanguage:typescript",
     "onLanguage:javascript",
@@ -77,6 +78,11 @@
       {
         "command": "lighthouse.setExplorerApiKey",
         "title": "Set Explorer API Key",
+        "category": "Lighthouse"
+      },
+      {
+        "command": "lighthouse.search",
+        "title": "Search",
         "category": "Lighthouse"
       }
     ],
@@ -137,6 +143,13 @@
         }
       ]
     },
+    "keybindings": [
+      {
+        "command": "lighthouse.search",
+        "key": "ctrl+shift+k",
+        "mac": "ctrl+shift+k"
+      }
+    ],
     "configuration": {
       "type": "object",
       "title": "Lighthouse",

@@ -10,7 +10,7 @@ export { normalizeAddress } from "./addresses";
 export { extractAddressMatches, extractAddressesFromText, ADDRESS_REGEX } from "./extract";
 export { DEFAULT_CHAINS, getDefaultChainMap } from "./chains";
 export { resolveChains, getChainById } from "./chain-config";
-export { buildExplorerUrl } from "./explorer";
+export { buildExplorerEntityUrl, buildExplorerUrl } from "./explorer";
 export { consoleLogger } from "./logger";
 export { RpcClient } from "./rpc-client";
 export { RpcPool } from "./rpc-pool";

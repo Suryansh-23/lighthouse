@@ -17,5 +17,6 @@ suite("Extension activation", () => {
     assert.ok(commands.includes("lighthouse.revealOccurrences"));
     assert.ok(commands.includes("lighthouse.clearCache"));
     assert.ok(commands.includes("lighthouse.setExplorerApiKey"));
+    assert.ok(commands.includes("lighthouse.search"));
   });
 });

@@ -8,7 +8,9 @@
   "engines": {
     "vscode": "^1.88.0"
   },
-  "categories": ["Other"],
+  "categories": [
+    "Other"
+  ],
   "main": "./dist/extension.js",
   "capabilities": {
     "untrustedWorkspaces": {
@@ -17,7 +19,6 @@
     }
   },
   "activationEvents": [
-    "onCommand:lighthouse.inspectAddress",
     "onCommand:lighthouse.openExplorer",
     "onCommand:lighthouse.copyAddress",
     "onCommand:lighthouse.addToAddressBook",
@@ -36,11 +37,6 @@
   ],
   "contributes": {
     "commands": [
-      {
-        "command": "lighthouse.inspectAddress",
-        "title": "Inspect Address...",
-        "category": "Lighthouse"
-      },
       {
         "command": "lighthouse.openExplorer",
         "title": "Open Explorer",
@@ -118,14 +114,6 @@
           "when": "view == lighthouseAddressBook && viewItem == lighthouseIndexedAddress"
         },
         {
-          "command": "lighthouse.inspectAddress",
-          "when": "view == lighthouseAddressBook && viewItem == lighthousePinnedAddress"
-        },
-        {
-          "command": "lighthouse.inspectAddress",
-          "when": "view == lighthouseAddressBook && viewItem == lighthouseIndexedAddress"
-        },
-        {
           "command": "lighthouse.revealOccurrences",
           "when": "view == lighthouseAddressBook && viewItem == lighthousePinnedAddress"
         },
@@ -160,8 +148,12 @@
         },
         "lighthouse.detection.fileGlobs": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": ["**/*.{ts,tsx,js,jsx,sol,rs,go,py,yml,yaml,json,toml,md}"],
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "**/*.{ts,tsx,js,jsx,sol,rs,go,py,yml,yaml,json,toml,md}"
+          ],
           "description": "File globs to scan for addresses."
         },
         "lighthouse.ui.hover.enabled": {
@@ -176,14 +168,27 @@
         },
         "lighthouse.chains.mode": {
           "type": "string",
-          "enum": ["workspaceLimited", "userAll", "singleChain"],
+          "enum": [
+            "workspaceLimited",
+            "userAll",
+            "singleChain"
+          ],
           "default": "workspaceLimited",
           "description": "Chain scanning strategy."
         },
         "lighthouse.chains.workspaceAllowlist": {
           "type": "array",
-          "items": { "type": "number" },
-          "default": [1, 10, 137, 42161, 8453],
+          "items": {
+            "type": "number"
+          },
+          "default": [
+            1,
+            10,
+            137,
+            42161,
+            8453,
+            100
+          ],
           "description": "Workspace chain allowlist."
         },
         "lighthouse.chains.userChains": {
@@ -208,14 +213,28 @@
         },
         "lighthouse.explorer.default": {
           "type": "string",
-          "enum": ["routescan", "blockscout", "etherscan"],
+          "enum": [
+            "routescan",
+            "blockscout",
+            "etherscan"
+          ],
           "default": "routescan",
           "description": "Default explorer for address navigation."
         },
-        "lighthouse.explorer.openInExternalBrowser": {
-          "type": "boolean",
-          "default": true,
-          "description": "Open explorer links in the system browser."
+        "lighthouse.explorer.apiKeys.routescan": {
+          "type": "string",
+          "default": "",
+          "description": "Routescan API key for metadata requests."
+        },
+        "lighthouse.explorer.apiKeys.etherscan": {
+          "type": "string",
+          "default": "",
+          "description": "Etherscan-compatible API key for metadata requests."
+        },
+        "lighthouse.explorer.apiKeys.blockscout": {
+          "type": "string",
+          "default": "",
+          "description": "Blockscout API key for metadata requests."
         },
         "lighthouse.cache.ttlSeconds": {
           "type": "number",

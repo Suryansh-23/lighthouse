@@ -17,10 +17,7 @@ interface HoverDeps {
 }
 
 export function registerHover(context: vscode.ExtensionContext, deps: HoverDeps) {
-  const selector: vscode.DocumentSelector = [
-    { scheme: "file" },
-    { scheme: "vscode-remote" },
-  ];
+  const selector: vscode.DocumentSelector = [{ scheme: "file" }, { scheme: "vscode-remote" }];
 
   context.subscriptions.push(
     vscode.languages.registerHoverProvider(selector, {
@@ -36,8 +33,7 @@ export function registerHover(context: vscode.ExtensionContext, deps: HoverDeps)
         }
 
         const cached = deps.cache.get(hit.address);
-        const notes = deps.addressBook.getNotes(hit.address);
-        const md = buildHoverMarkdown(hit.address, cached, notes);
+        const md = buildHoverMarkdown(hit.address, cached);
         const hover = new vscode.Hover(md, hit.range);
 
         if (!cached) {
@@ -54,7 +50,6 @@ export function registerHover(context: vscode.ExtensionContext, deps: HoverDeps)
 function buildHoverMarkdown(
   address: string,
   resolution?: AddressResolution,
-  notes?: string,
 ): vscode.MarkdownString {
   const md = new vscode.MarkdownString(undefined, true);
   md.supportThemeIcons = true;
@@ -63,7 +58,6 @@ function buildHoverMarkdown(
       "lighthouse.openExplorer",
       "lighthouse.copyAddress",
       "lighthouse.addToAddressBook",
-      "lighthouse.inspectAddress",
     ],
   };
 
@@ -82,21 +76,12 @@ function buildHoverMarkdown(
     md.appendMarkdown("Resolving…\n\n");
   }
 
-  if (notes) {
-    const snippet = notes.length > 180 ? `${notes.slice(0, 180)}…` : notes;
-    md.appendMarkdown(`**Notes**\n\n${escapeMarkdown(snippet)}\n\n`);
-  }
-
   const args = encodeCommandArgs({ address });
-  const openArgs = encodeCommandArgs({
-    address,
-    chainId: resolution?.scan.chainsSucceeded[0] ?? resolution?.scan.chainsAttempted[0],
-  });
+  const openArgs = encodeCommandArgs({ address });
 
   md.appendMarkdown(
     `[Open Explorer](command:lighthouse.openExplorer?${openArgs}) | ` +
       `[Copy](command:lighthouse.copyAddress?${args}) | ` +
-      `[Inspect](command:lighthouse.inspectAddress?${args}) | ` +
       `[Add](command:lighthouse.addToAddressBook?${args})`,
   );
 
@@ -109,7 +94,9 @@ function formatSummary(info: ChainAddressInfo): string {
 
   const classification = info.contract?.classification?.type;
   if (classification) {
-    const tokenLabel = info.token?.symbol ? `${classification} (${info.token.symbol})` : classification;
+    const tokenLabel = info.token?.symbol
+      ? `${classification} (${info.token.symbol})`
+      : classification;
     const price = info.token?.price?.usd;
     if (price !== undefined) {
       return `${base} · ${tokenLabel} · $${price.toFixed(2)}`;
@@ -153,15 +140,19 @@ function appendTokenDetails(md: vscode.MarkdownString, info: ChainAddressInfo) {
   }
 
   const lines: string[] = [];
-  lines.push(`Standard: ${token.standard}`);
-  if (token.name) lines.push(`Name: ${token.name}`);
-  if (token.symbol) lines.push(`Symbol: ${token.symbol}`);
-  if (token.decimals !== undefined) lines.push(`Decimals: ${token.decimals}`);
-  if (token.totalSupply) lines.push(`Total supply: ${token.totalSupply}`);
-  if (token.asset) lines.push(`Asset: ${token.asset}`);
-  if (token.totalAssets) lines.push(`Total assets: ${token.totalAssets}`);
+  const addLine = (label: string, value: string) => {
+    lines.push(`- **${label}**: ${escapeMarkdown(value)}`);
+  };
+
+  addLine("Standard", token.standard);
+  if (token.name) addLine("Name", token.name);
+  if (token.symbol) addLine("Symbol", token.symbol);
+  if (token.decimals !== undefined) addLine("Decimals", String(token.decimals));
+  if (token.totalSupply) addLine("Total supply", token.totalSupply);
+  if (token.asset) addLine("Asset", token.asset);
+  if (token.totalAssets) addLine("Total assets", token.totalAssets);
   if (token.price?.usd !== undefined) {
-    lines.push(`Price: $${token.price.usd.toFixed(2)}`);
+    addLine("Price", `$${token.price.usd.toFixed(2)}`);
   }
 
   md.appendMarkdown(`**Token details**\n\n${lines.join("\n")}\n\n`);

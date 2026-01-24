@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 
-import type { Address } from "@lighthouse/shared";
-import type { AddressResolver } from "@lighthouse/engine";
+import type { Address, AddressResolution, ChainId } from "@lighthouse/shared";
+import { resolveChains, type AddressResolver } from "@lighthouse/engine";
 
 import { extractAddressOccurrences } from "../core/extract";
 import { getSettings } from "../core/settings";
@@ -45,6 +45,8 @@ export class DocumentResolver {
   }
 
   private queueFromDocument(doc: vscode.TextDocument) {
+    const settings = getSettings();
+    const chainIds = resolveChains(settings.chains).map((chain) => chain.chainId);
     const occurrences = extractAddressOccurrences(doc);
     const seen = new Set<Address>();
     for (const occurrence of occurrences) {
@@ -53,7 +55,8 @@ export class DocumentResolver {
       }
       seen.add(occurrence.address);
 
-      if (this.cache.get(occurrence.address)) {
+      const cached = this.cache.get(occurrence.address);
+      if (cached && !shouldRefresh(cached, chainIds)) {
         continue;
       }
       if (this.inflight.has(occurrence.address)) {
@@ -83,4 +86,11 @@ export class DocumentResolver {
         });
     }
   }
+}
+
+function shouldRefresh(resolution: AddressResolution, chainIds: ChainId[]): boolean {
+  if (resolution.scan.chainsFailed.length > 0) {
+    return true;
+  }
+  return chainIds.some((chainId) => !resolution.perChain[chainId]);
 }

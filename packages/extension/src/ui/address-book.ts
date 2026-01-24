@@ -60,15 +60,15 @@ export class AddressBookProvider implements vscode.TreeDataProvider<AddressBookI
     }
 
     if (element.kind === "pinned") {
-      return this.store.getPinnedEntries().map(entry => this.toEntryItem(entry, true));
+      return this.store.getPinnedEntries().map((entry) => this.toEntryItem(entry, true));
     }
 
     if (element.kind === "indexed") {
-      const pinned = new Set(this.store.getPinnedEntries().map(entry => entry.address));
+      const pinned = new Set(this.store.getPinnedEntries().map((entry) => entry.address));
       return this.store
         .getIndexedAddresses()
-        .filter(address => !pinned.has(address))
-        .map(address =>
+        .filter((address) => !pinned.has(address))
+        .map((address) =>
           this.toEntryItem(
             {
               address,
@@ -108,11 +108,7 @@ export class AddressBookProvider implements vscode.TreeDataProvider<AddressBookI
     return item;
   }
 
-  private decorateRoot(
-    item: AddressBookItem,
-    icon: string,
-    count: number,
-  ): AddressBookItem {
+  private decorateRoot(item: AddressBookItem, icon: string, count: number): AddressBookItem {
     item.iconPath = new vscode.ThemeIcon(icon);
     item.description = String(count);
     return item;
@@ -164,18 +160,6 @@ export class AddressBookProvider implements vscode.TreeDataProvider<AddressBookI
       }
     }
 
-    const notes = this.store.getNotes(entry.address);
-    if (notes) {
-      items.push(
-        new AddressBookItem(
-          "detail",
-          `Notes: ${notes.length > 40 ? `${notes.slice(0, 40)}…` : notes}`,
-          vscode.TreeItemCollapsibleState.None,
-          entry,
-        ),
-      );
-    }
-
     return items;
   }
 }
@@ -193,10 +177,12 @@ export function registerAddressBookView(
   });
   context.subscriptions.push(view);
   context.subscriptions.push(
-    view.onDidExpandElement(async event => {
+    view.onDidExpandElement(async (event) => {
       if (event.element.kind === "entry" && event.element.entry) {
-        await resolver.resolve(event.element.entry.address).catch(() => undefined);
-        provider.refresh();
+        void resolver
+          .resolve(event.element.entry.address)
+          .catch(() => undefined)
+          .finally(() => provider.refresh());
       }
     }),
   );

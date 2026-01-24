@@ -23,9 +23,7 @@ import { registerAddressBookView } from "./ui/address-book";
 import { registerCodeLens } from "./ui/codelens";
 import { registerCommands } from "./ui/commands";
 import { registerHover } from "./ui/hover";
-import { InspectorController } from "./ui/inspector";
 import { registerDiagnostics } from "./ui/diagnostics";
-import { registerPinnedLabelDecorations } from "./ui/labels";
 
 export async function activate(context: vscode.ExtensionContext) {
   const settings = getSettings();
@@ -40,12 +38,14 @@ export async function activate(context: vscode.ExtensionContext) {
   await addressBook.init();
 
   const rpcPool = new RpcPool(settings.rpc);
-  const explorerClient = new ExplorerClient(await loadExplorerApiKeys(context.secrets));
+  const explorerClient = new ExplorerClient(await loadExplorerApiKeys(context.secrets, settings));
   const defillamaClient = new DefiLlamaClient();
   const pipeline = new EnrichmentPipeline([
     new EoaBasicsEnricher(),
     new ContractBasicsEnricher(),
     new ErcDetectorEnricher(),
+  ]);
+  const backgroundPipeline = new EnrichmentPipeline([
     new ExplorerMetadataEnricher(explorerClient),
     new DefiLlamaPriceEnricher(defillamaClient),
   ]);
@@ -54,10 +54,10 @@ export async function activate(context: vscode.ExtensionContext) {
     cache,
     rpcPool,
     pipeline,
+    backgroundPipeline,
     chains,
     scanMode: mapScanMode(settings.chains.mode),
   });
-  const inspector = new InspectorController(context, { cache, resolver, addressBook });
   const indexer = new WorkspaceIndexer(addressBook);
   const documentResolver = new DocumentResolver(
     cache,
@@ -69,7 +69,6 @@ export async function activate(context: vscode.ExtensionContext) {
     cache,
     addressBook,
     indexer,
-    inspector,
     explorerClient,
     secrets: context.secrets,
     resolver,
@@ -78,7 +77,6 @@ export async function activate(context: vscode.ExtensionContext) {
   registerCodeLens(context, { cache, addressBook });
   registerAddressBookView(context, addressBook, cache, resolver);
   registerDiagnostics(context);
-  registerPinnedLabelDecorations(context, addressBook);
 
   if (!settings.security.respectWorkspaceTrust || vscode.workspace.isTrusted) {
     void indexer.scanWorkspace();
@@ -89,14 +87,14 @@ export async function activate(context: vscode.ExtensionContext) {
   }
 
   context.subscriptions.push(
-    vscode.workspace.onDidOpenTextDocument(doc => {
+    vscode.workspace.onDidOpenTextDocument((doc) => {
       void indexer.scanDocument(doc);
       documentResolver.scheduleDocument(doc);
     }),
   );
 
   context.subscriptions.push(
-    vscode.workspace.onDidSaveTextDocument(doc => {
+    vscode.workspace.onDidSaveTextDocument((doc) => {
       void indexer.scanDocument(doc);
       documentResolver.scheduleDocument(doc);
     }),
@@ -113,11 +111,15 @@ export function deactivate() {
   return undefined;
 }
 
-async function loadExplorerApiKeys(secrets: vscode.SecretStorage) {
+async function loadExplorerApiKeys(
+  secrets: vscode.SecretStorage,
+  settings: ReturnType<typeof getSettings>,
+) {
   const kinds = ["routescan", "etherscan", "blockscout"] as const;
   const entries = await Promise.all(
-    kinds.map(async kind => {
-      const key = await secrets.get(`lighthouse.explorerApiKey.${kind}`);
+    kinds.map(async (kind) => {
+      const configValue = settings.explorer.apiKeys[kind];
+      const key = configValue || (await secrets.get(`lighthouse.explorerApiKey.${kind}`));
       return [kind, key ?? undefined] as const;
     }),
   );

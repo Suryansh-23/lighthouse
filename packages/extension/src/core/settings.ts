@@ -21,7 +21,7 @@ export interface LighthouseSettings {
   rpc: RpcPoolSettings;
   explorer: {
     default: ExplorerKind;
-    openInExternalBrowser: boolean;
+    apiKeys: Partial<Record<ExplorerKind, string>>;
   };
   cache: {
     ttlSeconds: number;
@@ -53,13 +53,7 @@ export function getSettings(): LighthouseSettings {
     },
     chains: {
       mode: config.get("chains.mode", "workspaceLimited"),
-      workspaceAllowlist: config.get("chains.workspaceAllowlist", [
-        1,
-        10,
-        137,
-        42161,
-        8453,
-      ]),
+      workspaceAllowlist: config.get("chains.workspaceAllowlist", [1, 10, 137, 42161, 8453, 100]),
       userChains: config.get("chains.userChains", []),
     },
     rpc: {
@@ -69,7 +63,11 @@ export function getSettings(): LighthouseSettings {
     },
     explorer: {
       default: config.get("explorer.default", "routescan"),
-      openInExternalBrowser: config.get("explorer.openInExternalBrowser", true),
+      apiKeys: {
+        routescan: config.get("explorer.apiKeys.routescan", ""),
+        etherscan: config.get("explorer.apiKeys.etherscan", ""),
+        blockscout: config.get("explorer.apiKeys.blockscout", ""),
+      },
     },
     cache: {
       ttlSeconds: config.get("cache.ttlSeconds", 60 * 60 * 24),

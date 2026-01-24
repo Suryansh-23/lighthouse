@@ -24,12 +24,12 @@ export class WorkspaceIndexer {
       return;
     }
 
-    const exclude = "**/{node_modules,dist,out,coverage,.git}/**";
+    const exclude = buildExcludeGlob();
     const uris = await vscode.workspace.findFiles(include, exclude);
     const batchSize = 6;
     for (let i = 0; i < uris.length; i += batchSize) {
       const batch = uris.slice(i, i + batchSize);
-      await Promise.all(batch.map(uri => this.scanUri(uri)));
+      await Promise.all(batch.map((uri) => this.scanUri(uri)));
     }
   }
 
@@ -92,6 +92,42 @@ function buildIncludeGlob(globs: string[]): string | undefined {
 
 function shouldScanDocument(doc: vscode.TextDocument): boolean {
   return doc.uri.scheme === "file";
+}
+
+function buildExcludeGlob(): string | undefined {
+  const defaults = [
+    "**/.git/**",
+    "**/node_modules/**",
+    "**/.pnpm-store/**",
+    "**/pnpm-store/**",
+    "**/dist/**",
+    "**/out/**",
+    "**/coverage/**",
+    "**/.turbo/**",
+    "**/.next/**",
+    "**/.cache/**",
+  ];
+  const searchExclude = vscode.workspace
+    .getConfiguration("search")
+    .get<Record<string, boolean>>("exclude", {});
+  const filesExclude = vscode.workspace
+    .getConfiguration("files")
+    .get<Record<string, boolean>>("exclude", {});
+  const patterns = new Set(defaults);
+  for (const [pattern, enabled] of Object.entries(searchExclude)) {
+    if (enabled) {
+      patterns.add(pattern);
+    }
+  }
+  for (const [pattern, enabled] of Object.entries(filesExclude)) {
+    if (enabled) {
+      patterns.add(pattern);
+    }
+  }
+  if (patterns.size === 0) {
+    return undefined;
+  }
+  return `{${Array.from(patterns).join(",")}}`;
 }
 
 function getMaxFileSize(): number {

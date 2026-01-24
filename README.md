@@ -127,10 +127,10 @@ explorer opens.
 
 ### Search
 
-Run `Search` to open the Lighthouse search panel. Results stream in from the
-Blockscout APIs across supported chains with live updates and pagination. Click
-any result to open it in your configured explorer, or use the copy button to
-grab the address/hash.
+Run `Search` to open the native search picker. Results stream in from the
+Blockscout APIs across supported chains with live updates and pagination. Pick a
+result to open it in your configured explorer, or use the copy icon to grab the
+address or hash.
 
 ### Diagnostics
 

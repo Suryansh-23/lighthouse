@@ -1,6 +1,7 @@
 import {
   decodeFunctionResult,
   encodeFunctionData,
+  hexToString,
   parseAbi,
   type Address as ViemAddress,
   type Hex,
@@ -14,6 +15,10 @@ const ERC20_ABI = parseAbi([
   "function symbol() view returns (string)",
   "function decimals() view returns (uint8)",
   "function totalSupply() view returns (uint256)",
+]);
+const ERC20_BYTES32_ABI = parseAbi([
+  "function name() view returns (bytes32)",
+  "function symbol() view returns (bytes32)",
 ]);
 const ERC4626_ABI = parseAbi([
   "function asset() view returns (address)",
@@ -39,8 +44,8 @@ export class ErcDetectorEnricher implements Enricher {
 
     if (supports1155) {
       const [name, symbol] = await Promise.all([
-        callString(ctx, ERC20_ABI, "name"),
-        callString(ctx, ERC20_ABI, "symbol"),
+        callTokenString(ctx, "name"),
+        callTokenString(ctx, "symbol"),
       ]);
       updateClassification(ctx, "ERC1155", 0.9);
       ctx.info.token = {
@@ -53,8 +58,8 @@ export class ErcDetectorEnricher implements Enricher {
 
     if (supports721) {
       const [name, symbol] = await Promise.all([
-        callString(ctx, ERC20_ABI, "name"),
-        callString(ctx, ERC20_ABI, "symbol"),
+        callTokenString(ctx, "name"),
+        callTokenString(ctx, "symbol"),
       ]);
       updateClassification(ctx, "ERC721", 0.9);
       ctx.info.token = {
@@ -66,8 +71,8 @@ export class ErcDetectorEnricher implements Enricher {
     }
 
     const [name, symbol, decimals, totalSupply] = await Promise.all([
-      callString(ctx, ERC20_ABI, "name"),
-      callString(ctx, ERC20_ABI, "symbol"),
+      callTokenString(ctx, "name"),
+      callTokenString(ctx, "symbol"),
       callNumber(ctx, ERC20_ABI, "decimals"),
       callBigInt(ctx, ERC20_ABI, "totalSupply"),
     ]);
@@ -130,15 +135,77 @@ async function supportsInterface(ctx: EnrichmentContext, interfaceId: Hex): Prom
       abi: ERC165_ABI,
       functionName: "supportsInterface",
       data: result,
-    }) as unknown as readonly unknown[];
-    const supported = decoded[0];
+    });
+    const supported = unwrapResult(decoded);
     return Boolean(supported);
   } catch {
     return false;
   }
 }
 
-async function callString(ctx: EnrichmentContext, abi: typeof ERC20_ABI, name: string): Promise<string | undefined> {
+async function callTokenString(ctx: EnrichmentContext, name: "name" | "symbol") {
+  const [primary, fallback] = await Promise.all([
+    callString(ctx, ERC20_ABI, name),
+    callBytes32String(ctx, ERC20_BYTES32_ABI, name),
+  ]);
+
+  const normalizedPrimary = normalizeTokenString(primary);
+  const normalizedFallback = normalizeTokenString(fallback);
+  if (!normalizedPrimary) {
+    return normalizedFallback;
+  }
+  if (!normalizedFallback) {
+    return normalizedPrimary;
+  }
+
+  const primaryScore = scoreTokenString(normalizedPrimary, name);
+  const fallbackScore = scoreTokenString(normalizedFallback, name);
+  return fallbackScore > primaryScore ? normalizedFallback : normalizedPrimary;
+}
+
+function normalizeTokenString(value?: string): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const trimmed = value.replace(/\u0000/g, "").trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function scoreTokenString(value: string, kind: "name" | "symbol"): number {
+  let score = Math.min(value.length, 12) * 0.1;
+  if (kind === "symbol") {
+    if (/^[A-Za-z0-9.$-]+$/.test(value)) {
+      score += 4;
+    }
+    if (value.length <= 8) {
+      score += 3;
+    }
+    if (value.length <= 2) {
+      score -= 4;
+    }
+    if (/\s/.test(value)) {
+      score -= 3;
+    }
+  } else {
+    if (value.length >= 3) {
+      score += 2;
+    }
+    if (/\s/.test(value)) {
+      score += 1;
+    }
+  }
+  return score;
+}
+
+function unwrapResult(value: unknown): unknown {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+async function callString(
+  ctx: EnrichmentContext,
+  abi: typeof ERC20_ABI,
+  name: string,
+): Promise<string | undefined> {
   const data = encodeFunctionData({ abi, functionName: name as never });
   const result = await safeCall(ctx, data);
   if (!result) {
@@ -150,9 +217,37 @@ async function callString(ctx: EnrichmentContext, abi: typeof ERC20_ABI, name: s
       abi,
       functionName: name as never,
       data: result,
-    }) as unknown as readonly unknown[];
-    const value = decoded[0];
+    });
+    const value = unwrapResult(decoded);
     return typeof value === "string" ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function callBytes32String(
+  ctx: EnrichmentContext,
+  abi: typeof ERC20_BYTES32_ABI,
+  name: string,
+): Promise<string | undefined> {
+  const data = encodeFunctionData({ abi, functionName: name as never });
+  const result = await safeCall(ctx, data);
+  if (!result) {
+    return undefined;
+  }
+
+  try {
+    const decoded = decodeFunctionResult({
+      abi,
+      functionName: name as never,
+      data: result,
+    });
+    const value = unwrapResult(decoded);
+    if (typeof value !== "string") {
+      return undefined;
+    }
+    const text = hexToString(value as Hex, { size: 32 }).replace(/\u0000/g, "");
+    return text.trim() || undefined;
   } catch {
     return undefined;
   }
@@ -174,8 +269,8 @@ async function callNumber(
       abi,
       functionName: name as never,
       data: result,
-    }) as unknown as readonly unknown[];
-    const value = decoded[0];
+    });
+    const value = unwrapResult(decoded);
     if (typeof value === "bigint") {
       return Number(value);
     }
@@ -201,8 +296,8 @@ async function callBigInt(
       abi,
       functionName: name as never,
       data: result,
-    }) as unknown as readonly unknown[];
-    const value = decoded[0];
+    });
+    const value = unwrapResult(decoded);
     return typeof value === "bigint" ? value : undefined;
   } catch {
     return undefined;
@@ -225,8 +320,8 @@ async function callAddress(
       abi,
       functionName: name as never,
       data: result,
-    }) as unknown as readonly unknown[];
-    const value = decoded[0];
+    });
+    const value = unwrapResult(decoded);
     return typeof value === "string" ? (value as ViemAddress) : undefined;
   } catch {
     return undefined;

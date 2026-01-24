@@ -7,7 +7,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint \"src/**/*.ts\"",
-    "test": "pnpm run build && node ./test/engine.test.js"
+    "test": "pnpm run build && node ./test/engine.test.js",
+    "bench:stablecoins": "pnpm run build && node ./test/stablecoin-bench.js"
   },
   "dependencies": {
     "@lighthouse/shared": "workspace:*",

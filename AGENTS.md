@@ -3,27 +3,30 @@
 Purpose: onboarding notes and working rules for agents in this repo.
 
 ## Project context
+
 - Lighthouse is a VS Code extension for EVM address intelligence.
-- Key UX surfaces: hover, CodeLens, optional inspector webview, tree view address book.
+- Key UX surfaces: hover, CodeLens, search picker, tree view address book.
 - Core capabilities: multi-chain resolution, contract/token detection, explorer links, local cache.
 - Performance goals: cache-first UI, low latency, bounded network concurrency.
 
 ## Key docs
+
 - `SPEC.md` is the authoritative product + architecture spec.
 - `README.md` contains setup, usage, and validation guidance.
 
 ## Repository layout (current state)
+
 - Monorepo scaffold is in place with pnpm workspaces.
 - Packages:
   - `packages/extension` (VS Code extension)
   - `packages/engine` (core logic reusable outside VS Code)
   - `packages/shared` (types/schemas)
-  - `packages/webview` (inspector UI build output placeholder)
 - Root tooling: `tsconfig.base.json`, ESLint, Prettier, GitHub Actions CI.
-- Extension structure: `src/core` (settings/extraction), `src/data` (cache/address book), `src/domain` (indexer/document-resolver), `src/ui` (hover/commands/codelens/address-book/inspector/diagnostics/labels/chain-selection).
+- Extension structure: `src/core` (settings/extraction), `src/data` (cache/address book), `src/domain` (indexer/document-resolver), `src/ui` (hover/commands/codelens/address-book/diagnostics/chain-selection/search).
 - Engine structure: `src` exports chain config, resolver, enrichers, RPC, explorer/DefiLlama clients.
 
 ## Commands (build/lint/test)
+
 - Install: `pnpm install`
 - Build all packages: `pnpm build`
 - Lint all packages: `pnpm lint`
@@ -39,7 +42,9 @@ Purpose: onboarding notes and working rules for agents in this repo.
 - If a different runner is introduced (vitest/jest), update this section.
 
 ## Code style guidelines
+
 ### Language and formatting
+
 - Use TypeScript for all extension code.
 - Prefer ES module syntax (`import ... from ...`).
 - Keep formatting consistent with the repo formatter once configured.
@@ -47,12 +52,14 @@ Purpose: onboarding notes and working rules for agents in this repo.
 - Keep lines readable; wrap long markdown or UI strings for clarity.
 
 ### Imports and modules
+
 - Order imports: built-ins, external deps, internal modules, then relative paths.
 - Group imports with a blank line between groups.
 - Avoid deep relative paths; prefer module-level exports when available.
 - Keep VS Code APIs isolated in the UI layer where possible.
 
 ### Types and interfaces
+
 - Use explicit types for public APIs and exported functions.
 - Model data per `SPEC.md` interfaces (AddressResolution, ChainAddressInfo, etc.).
 - Use `type` for unions and aliases, `interface` for object shapes.
@@ -60,6 +67,7 @@ Purpose: onboarding notes and working rules for agents in this repo.
 - Normalize addresses via `viem.getAddress` before storage or comparison.
 
 ### Naming conventions
+
 - Files: `kebab-case` or `camelCase` following existing repo conventions.
 - Functions: verbs + nouns (`resolveAddress`, `extractAddressAtPosition`).
 - Types: `PascalCase` (`AddressResolution`, `RpcPool`).
@@ -67,6 +75,7 @@ Purpose: onboarding notes and working rules for agents in this repo.
 - Commands: `lighthouse.<verb><Noun>` (e.g., `lighthouse.openExplorer`).
 
 ### Error handling
+
 - Never throw from UI surfaces (hover, CodeLens, decorations).
 - Use `Result`-like patterns or return partial data when possible.
 - Treat all RPC/explorer failures as recoverable; log and cache failures.
@@ -74,76 +83,81 @@ Purpose: onboarding notes and working rules for agents in this repo.
 - Use `CancellationToken` to stop work on cursor/hover change.
 
 ### Async and concurrency
+
 - All network calls are async; never block the UI thread.
 - Use bounded queues for multi-chain resolution (see spec scheduler).
 - CodeLens must be cache-only; never trigger network calls there.
 - Avoid parallel storms; respect `maxQps` and concurrency settings.
 
 ### Caching and persistence
+
 - Use workspace storage (`context.storageUri`) for cache + address book.
 - Use global storage for shared defaults (`context.globalStorageUri`).
 - Store API keys only in `context.secrets` (never settings.json).
 - Cache explorer data long-term; cache price data short-term.
 
 ### UI/UX behavior
+
 - Hover: render immediately with cached data, then resolve in background.
 - CodeLens: show cached summary or `…`/`resolving` when missing.
-- Inspector: lazy-load heavy data (ABI, token balances) on open.
 - Decorations: keep subtle; default off to avoid visual noise.
 
 ### Security and trust
+
 - Respect workspace trust; disable background indexing if untrusted.
 - Markdown hovers must use `isTrusted` with explicit command allowlist.
-- Webview must enforce CSP and limit `localResourceRoots`.
-- Treat all webview messages as untrusted input.
 
 ## Architecture conventions (from SPEC.md)
-- UI layer: hover/CodeLens/decorations/tree/webview only.
+
+- UI layer: hover/CodeLens/decorations/tree/search only.
 - Domain layer: resolution, indexing, enrichment pipeline, scheduler.
 - Data layer: RPC pools, explorer adapters, DefiLlama client, cache store.
 - Shared: types, schemas, logging, telemetry (default off).
 
 ## Extension-specific patterns
+
 - Activation events should be conservative (no `*`).
 - Dispose registrations via `context.subscriptions`.
 - Keep provider constructors lightweight; work happens on-demand.
 - Avoid native node modules early (packaging burden).
 
 ## Indexing and extraction rules
+
 - Regex for address detection: `\b0x[a-fA-F0-9]{40}\b`.
 - Trim punctuation boundaries, then validate via `viem.getAddress`.
 - Two-tier indexing: on-demand (open docs) + background scan.
 - Skip huge files and respect `files.maxMemoryForLargeFilesMB`.
 
 ## Testing guidance
+
 - Extension tests live in `packages/extension/src/test` and run via `@vscode/test-electron`.
 - Engine tests live in `packages/engine/test` and run via `pnpm --filter @lighthouse/engine test`.
 - Add tests alongside features; prefer unit tests for core logic.
 - Keep tests deterministic; mock RPC/explorer/DefiLlama calls.
 
 ## Phase status
-- Phase 0 complete: pnpm workspace + extension/shared/webview scaffolds.
+
+- Phase 0 complete: pnpm workspace + extension/shared scaffolds.
 - Phase 1 complete: address extraction, cache store, RPC resolver, hover provider, and commands are implemented.
 - Phase 2 complete: CodeLens, address book tree view, workspace indexer, and RPC pool rotation/cooldown.
 - Phase 3 complete: ERC detection, proxy heuristics, explorer metadata, and DefiLlama enrichment.
-- Phase 4 complete: explorer panel with embedded explorer and notes.
+- Phase 4 complete: explorer actions and address book polish.
 - Phase 5 in progress: diagnostics + code actions implemented; optional LSP pending.
 - Core engine is now in `packages/engine` and reused by the extension.
 
-## Explorer + notes flow
-- Inspecting an address opens a webview panel with the selected explorer embedded.
-- Notes are stored in workspace storage and shown in hover + address book.
-
 ## Linting and formatting
+
 - Follow ESLint/Prettier once added; do not hand-format against them.
 - Prefer explicit typing over implicit `any`.
 - Avoid unused imports or variables; keep files warning-free.
 
 ## Cursor/Copilot rules
+
 - No Cursor or Copilot instructions found in this repo.
 - If rules are added later (e.g., `.cursor/rules/`), update this file.
 
 ## When in doubt
+
 - Re-read `SPEC.md` for UX/performance expectations.
 - Keep networking optional, cached, and failure-tolerant.
 - Favor user experience and speed over deep data fetching.

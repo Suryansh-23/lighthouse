@@ -19,7 +19,6 @@ address book with cache-backed enrichment.
 - `packages/engine`: core resolver, enrichers, RPC client/pool, explorers
 - `packages/extension`: VS Code integration and UI surfaces
 - `packages/shared`: shared types and schemas
-- `packages/webview`: webview build output placeholder
 - `SPEC.md`: authoritative product spec and architecture
 
 ## Requirements

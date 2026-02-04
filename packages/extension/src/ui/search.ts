@@ -10,6 +10,7 @@ import {
   normalizeAddress,
   type ChainConfig,
   resolveNetworkId,
+  DefiLlamaClient,
 } from "@lighthouse/engine";
 import { getSettings } from "../core/settings";
 
@@ -34,6 +35,7 @@ interface SearchResultItem {
   entityValue: string;
   copyValue?: string;
   score: number;
+  baseScore?: number;
   marketCap?: number;
   priority?: number;
   reputation?: string;
@@ -43,6 +45,9 @@ interface SearchResultItem {
   isVerified?: boolean;
   tokenType?: string;
   source?: "blockscout" | "routescan";
+  hasDefiLlamaPrice?: boolean;
+  hasLogo?: boolean;
+  hasRoutescanMetadata?: boolean;
 }
 
 interface SearchResponse {
@@ -127,9 +132,12 @@ class SearchQuickPick {
   private searchChains: SearchChain[] = [];
   private routescanClient: RoutescanClient | undefined;
   private readonly directCache = new Map<string, SearchResultItem>();
+  private readonly enhancedTokens = new Set<string>();
+  private tokenEnhanceId = 0;
   private abortController: AbortController | undefined;
   private debounceHandle: NodeJS.Timeout | undefined;
   private quickPick: vscode.QuickPick<SearchQuickPickItem> | undefined;
+  private defillamaClient = new DefiLlamaClient();
 
   async open() {
     this.quickPick = vscode.window.createQuickPick<SearchQuickPickItem>();
@@ -171,6 +179,8 @@ class SearchQuickPick {
     this.resultsByChain.clear();
     this.nextPageByChain.clear();
     this.directCache.clear();
+    this.enhancedTokens.clear();
+    this.tokenEnhanceId += 1;
     this.abortController?.abort();
     this.abortController = new AbortController();
 
@@ -194,9 +204,10 @@ class SearchQuickPick {
           return;
         }
         if (response) {
-          const mapped = response.items
+          let mapped = response.items
             .map((item) => toSearchItem(chain, item, this.currentQuery))
             .filter(isSearchResultItem);
+          mapped = await this.enhanceTokenScores(mapped, token);
           this.resultsByChain.set(chain.chainId, sortResults(mapped, this.currentQuery));
           if (response.next_page_params && hasNextParams(response.next_page_params)) {
             this.nextPageByChain.set(chain.chainId, response.next_page_params);
@@ -233,9 +244,10 @@ class SearchQuickPick {
       }
       if (response) {
         const existing = this.resultsByChain.get(chain.chainId) ?? [];
-        const nextItems = response.items
+        let nextItems = response.items
           .map((item) => toSearchItem(chain, item, this.currentQuery))
           .filter(isSearchResultItem);
+        nextItems = await this.enhanceTokenScores(nextItems, token);
         this.resultsByChain.set(
           chain.chainId,
           sortResults([...existing, ...nextItems], this.currentQuery),
@@ -365,6 +377,7 @@ class SearchQuickPick {
     const settings = getSettings();
     const apiKey = settings.explorer.apiKeys.routescan || undefined;
     this.routescanClient = new RoutescanClient({ apiKey });
+    this.defillamaClient = new DefiLlamaClient();
   }
 
   private async runDirectLookups(token: number) {
@@ -448,6 +461,89 @@ class SearchQuickPick {
 
     await Promise.all(tasks);
   }
+
+  private async enhanceTokenScores(items: SearchResultItem[], token: number) {
+    const tokens = items.filter((item) => item.kind === "token");
+    if (tokens.length === 0) {
+      return items;
+    }
+
+    const settings = getSettings();
+    const chainMap = new Map(
+      resolveChains(settings.chains).map((chain) => [chain.chainId, chain] as const),
+    );
+
+    const runId = this.tokenEnhanceId;
+    const candidates = tokens
+      .filter((item) => !this.enhancedTokens.has(item.id))
+      .sort((a, b) => (b.baseScore ?? b.score) - (a.baseScore ?? a.score))
+      .slice(0, 8);
+
+    await runWithLimit(candidates, 2, async (item) => {
+      if (token !== this.requestId || runId !== this.tokenEnhanceId) {
+        return;
+      }
+      const chain = chainMap.get(item.chainId);
+      if (!chain || !chain.defillamaChainKey) {
+        return;
+      }
+      const result = await this.defillamaClient.getPrice(chain.defillamaChainKey, item.entityValue);
+      if (!result?.price) {
+        return;
+      }
+      item.hasDefiLlamaPrice = true;
+      if (item.exchangeRate === undefined) {
+        item.exchangeRate = result.price;
+      }
+    });
+
+    await runWithLimit(candidates, 2, async (item) => {
+      if (token !== this.requestId || runId !== this.tokenEnhanceId) {
+        return;
+      }
+      if (!this.routescanClient) {
+        return;
+      }
+      const chain = chainMap.get(item.chainId);
+      if (!chain) {
+        return;
+      }
+      const metadata = await this.routescanClient.getContractMetadata(
+        chain,
+        item.entityValue as never,
+        this.abortController?.signal,
+      );
+      if (!metadata) {
+        return;
+      }
+      item.hasRoutescanMetadata = true;
+      if (metadata.verified) {
+        item.isVerified = item.isVerified ?? true;
+      }
+      if (metadata.contractName && !item.name) {
+        item.name = metadata.contractName;
+      }
+    });
+
+    for (const item of candidates) {
+      this.enhancedTokens.add(item.id);
+    }
+
+    const updated = items.map((item) => {
+      if (item.kind !== "token") {
+        return item;
+      }
+      const base = item.baseScore ?? item.score;
+      const boosted = base + tokenSignalBoost(item);
+      return { ...item, score: boosted };
+    });
+
+    if (token === this.requestId && runId === this.tokenEnhanceId) {
+      this.updateItems(this.buildItems());
+    }
+
+    return updated;
+  }
 }
 
 async function fetchSearch(
@@ -504,6 +600,20 @@ function toSearchItem(
       item.symbol && item.name && item.symbol !== item.name
         ? `${item.symbol} - ${item.name}`
         : item.symbol || item.name || "Token";
+    const hasLogo = Boolean(item.icon_url);
+    const score = scoreItem(
+      {
+        kind: item.type,
+        title: item.name || item.symbol || "",
+        symbol: item.symbol,
+        name: item.name,
+        priority: item.priority,
+        marketCap,
+        exchangeRate,
+        isVerified: item.is_smart_contract_verified,
+      },
+      query,
+    );
     return {
       id: `${chain.chainId}:${item.type}:${item.address_hash}`,
       chainId: chain.chainId,
@@ -516,19 +626,8 @@ function toSearchItem(
       entityType: "address",
       entityValue: item.address_hash,
       copyValue: item.address_hash,
-      score: scoreItem(
-        {
-          kind: item.type,
-          title: item.name || item.symbol || "",
-          symbol: item.symbol,
-          name: item.name,
-          priority: item.priority,
-          marketCap,
-          exchangeRate,
-          isVerified: item.is_smart_contract_verified,
-        },
-        query,
-      ),
+      score,
+      baseScore: score,
       marketCap,
       priority: item.priority,
       reputation: item.reputation ?? undefined,
@@ -537,6 +636,7 @@ function toSearchItem(
       exchangeRate,
       isVerified: item.is_smart_contract_verified,
       tokenType: item.token_type,
+      hasLogo,
     };
   }
 
@@ -755,6 +855,28 @@ function sortResults(items: SearchResultItem[], query: string): SearchResultItem
     if (a.score !== b.score) {
       return b.score - a.score;
     }
+    if (a.kind === "token" && b.kind === "token") {
+      const aVerified = a.isVerified ? 1 : 0;
+      const bVerified = b.isVerified ? 1 : 0;
+      if (aVerified !== bVerified) {
+        return bVerified - aVerified;
+      }
+      const aDefi = a.hasDefiLlamaPrice ? 1 : 0;
+      const bDefi = b.hasDefiLlamaPrice ? 1 : 0;
+      if (aDefi !== bDefi) {
+        return bDefi - aDefi;
+      }
+      const aMcap = a.marketCap ?? 0;
+      const bMcap = b.marketCap ?? 0;
+      if (aMcap !== bMcap) {
+        return bMcap - aMcap;
+      }
+      const aLogo = a.hasLogo ? 1 : 0;
+      const bLogo = b.hasLogo ? 1 : 0;
+      if (aLogo !== bLogo) {
+        return bLogo - aLogo;
+      }
+    }
     if (a.source !== b.source) {
       if (a.source === "routescan") return -1;
       if (b.source === "routescan") return 1;
@@ -894,6 +1016,39 @@ function buildDetail(item: SearchResultItem): string | undefined {
     parts.push("Routescan");
   }
   return parts.length > 0 ? parts.join(" | ") : undefined;
+}
+
+function tokenSignalBoost(item: SearchResultItem): number {
+  if (item.kind !== "token") {
+    return 0;
+  }
+  let boost = 0;
+  if (item.isVerified) boost += 18;
+  if (item.hasDefiLlamaPrice) boost += 16;
+  if (item.marketCap && item.marketCap > 0) boost += 12;
+  if (item.hasLogo) boost += 8;
+  if (item.hasRoutescanMetadata) boost += 6;
+
+  const sourceCount = countSources(item);
+  if (sourceCount >= 2) boost += 12;
+  if (sourceCount >= 3) boost += 12;
+  return boost;
+}
+
+function countSources(item: SearchResultItem): number {
+  let sources = 0;
+  const hasBlockscoutData =
+    item.isVerified || Boolean(item.exchangeRate) || Boolean(item.marketCap) || Boolean(item.hasLogo);
+  if (hasBlockscoutData) {
+    sources += 1;
+  }
+  if (item.hasDefiLlamaPrice) {
+    sources += 1;
+  }
+  if (item.hasRoutescanMetadata) {
+    sources += 1;
+  }
+  return sources;
 }
 
 function isLikelyTxHash(value: string): boolean {

@@ -495,10 +495,6 @@ export class RoutescanClient {
   }
 
   private getEtherscanApiBase(chain: ChainConfig): string | undefined {
-    if (chain.explorer?.kind !== "routescan") {
-      return chain.explorer?.apiBaseUrl;
-    }
-
     const networkId = resolveNetworkId(chain);
     return `${ROUTESCAN_API_BASE}/v2/network/${networkId}/evm/${chain.chainId}/etherscan/api`;
   }

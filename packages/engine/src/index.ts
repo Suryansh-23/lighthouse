@@ -19,6 +19,7 @@ export { AddressResolver } from "./resolve";
 export { DefiLlamaClient } from "./defillama-client";
 export { ExplorerClient } from "./explorer-client";
 export { RoutescanClient, resolveNetworkId } from "./routescan-client";
+export type { RoutescanNetworkId } from "./routescan-client";
 export { ContractBasicsEnricher } from "./enrichers/contract-basics";
 export { DefiLlamaPriceEnricher } from "./enrichers/defillama-price";
 export { EoaBasicsEnricher } from "./enrichers/eoa-basics";

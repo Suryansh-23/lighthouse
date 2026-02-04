@@ -9,6 +9,7 @@ import {
   RoutescanClient,
   normalizeAddress,
   type ChainConfig,
+  resolveNetworkId,
 } from "@lighthouse/engine";
 import { getSettings } from "../core/settings";
 
@@ -179,9 +180,10 @@ class SearchQuickPick {
     }
 
     this.setLoading(true);
+    const blockscoutChains = this.searchChains.filter((chain) => Boolean(chain.apiBaseUrl));
     await Promise.all([
       this.runDirectLookups(token),
-      runWithLimit(this.searchChains, 3, async (chain) => {
+      runWithLimit(blockscoutChains, 3, async (chain) => {
         const response = await fetchSearch(
           chain,
           this.currentQuery,
@@ -381,24 +383,33 @@ class SearchQuickPick {
   }
 
   private async resolveAddressDirect(token: number, address: string) {
-    const chains = this.searchChains;
-    const tasks = chains.map(async (chain) => {
+    const settings = getSettings();
+    const networkIds = getNetworkIds(settings.chains);
+    const tasks = networkIds.map(async (networkId) => {
       if (token !== this.requestId) {
         return;
       }
-      const result = await this.routescanClient?.resolveAddressAllChains(
-        buildRoutescanChain(chain),
-        address as never,
+      const result = await this.routescanClient?.listAddresses(
+        networkId,
+        "all",
+        { ids: address, limit: 5 },
         this.abortController?.signal,
       );
-      if (!result || token !== this.requestId) {
+      if (!result?.items || token !== this.requestId) {
         return;
       }
-      const item = mapRoutescanAddress(chain, address, result);
-      if (!item) {
-        return;
+      for (const item of result.items) {
+        const chainId = toChainId(item.chainId);
+        if (!chainId) {
+          continue;
+        }
+        const chainName = getChainById(chainId, settings.chains)?.name ?? `Chain ${chainId}`;
+        const mapped = mapRoutescanAddress({ chainId, name: chainName, apiBaseUrl: "" }, address);
+        if (!mapped) {
+          continue;
+        }
+        this.directCache.set(mapped.id, mapped);
       }
-      this.directCache.set(item.id, item);
       this.updateItems(this.buildItems());
     });
 
@@ -406,19 +417,27 @@ class SearchQuickPick {
   }
 
   private async resolveTransactionDirect(token: number, txHash: string) {
-    const chains = this.searchChains;
-    const tasks = chains.map(async (chain) => {
+    const settings = getSettings();
+    const networkIds = getNetworkIds(settings.chains);
+    const tasks = networkIds.map(async (networkId) => {
       if (token !== this.requestId) {
         return;
       }
-      const result = await this.routescanClient?.resolveTransactionAllChains(
-        buildRoutescanChain(chain),
+      const result = await this.routescanClient?.getTransactionAll(
+        networkId,
         txHash,
         this.abortController?.signal,
       );
       if (!result || token !== this.requestId) {
         return;
       }
+      const chainId = toChainId(result.chainId);
+      const chainName = chainId
+        ? (getChainById(chainId, settings.chains)?.name ?? `Chain ${chainId}`)
+        : "Unknown chain";
+      const chain = chainId
+        ? { chainId, name: chainName, apiBaseUrl: "" }
+        : { chainId: 0, name: chainName, apiBaseUrl: "" };
       const item = mapRoutescanTransaction(chain, txHash, result);
       if (!item) {
         return;
@@ -437,6 +456,9 @@ async function fetchSearch(
   pageParams?: Record<string, string | number | null>,
   signal?: AbortSignal,
 ): Promise<SearchResponse | undefined> {
+  if (!chain.apiBaseUrl) {
+    return undefined;
+  }
   const url = new URL(`${chain.apiBaseUrl}/search`);
   url.searchParams.set("q", query);
   if (pageParams) {
@@ -878,11 +900,7 @@ function isLikelyTxHash(value: string): boolean {
   return /^0x[a-fA-F0-9]{64}$/.test(value);
 }
 
-function mapRoutescanAddress(
-  chain: SearchChain,
-  address: string,
-  data: { balance?: string },
-): SearchResultItem | undefined {
+function mapRoutescanAddress(chain: SearchChain, address: string): SearchResultItem | undefined {
   return {
     id: `${chain.chainId}:routescan:address:${address}`,
     chainId: chain.chainId,
@@ -928,6 +946,25 @@ function buildRoutescanChain(chain: SearchChain): ChainConfig {
     rpcs: [],
     explorer: { kind: "routescan", baseUrl: "https://routescan.io" },
   };
+}
+
+function getNetworkIds(
+  settings: ReturnType<typeof getSettings>["chains"],
+): Array<ReturnType<typeof resolveNetworkId>> {
+  const chains = resolveChains(settings);
+  const ids = new Set<ReturnType<typeof resolveNetworkId>>();
+  for (const chain of chains) {
+    ids.add(resolveNetworkId(chain));
+  }
+  return Array.from(ids);
+}
+
+function toChainId(value?: string): ChainId | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function iconForKind(kind: string): vscode.ThemeIcon {

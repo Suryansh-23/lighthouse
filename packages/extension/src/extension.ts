@@ -11,6 +11,8 @@ import {
   ErcDetectorEnricher,
   ExplorerClient,
   ExplorerMetadataEnricher,
+  RoutescanClient,
+  RoutescanMetadataEnricher,
   RpcPool,
   resolveChains,
 } from "@lighthouse/engine";
@@ -40,6 +42,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const rpcPool = new RpcPool(settings.rpc);
   const explorerClient = new ExplorerClient(await loadExplorerApiKeys(context.secrets, settings));
+  const routescanClient = new RoutescanClient({
+    apiKey: await loadRoutescanApiKey(context.secrets, settings),
+  });
   const defillamaClient = new DefiLlamaClient();
   const pipeline = new EnrichmentPipeline([
     new EoaBasicsEnricher(),
@@ -48,6 +53,7 @@ export async function activate(context: vscode.ExtensionContext) {
   ]);
   const backgroundPipeline = new EnrichmentPipeline([
     new ExplorerMetadataEnricher(explorerClient),
+    new RoutescanMetadataEnricher(routescanClient),
     new DefiLlamaPriceEnricher(defillamaClient),
   ]);
   const chains = resolveChains(settings.chains);
@@ -127,6 +133,17 @@ async function loadExplorerApiKeys(
   );
 
   return Object.fromEntries(entries) as Partial<Record<(typeof kinds)[number], string>>;
+}
+
+async function loadRoutescanApiKey(
+  secrets: vscode.SecretStorage,
+  settings: ReturnType<typeof getSettings>,
+): Promise<string | undefined> {
+  const configValue = settings.explorer.apiKeys.routescan;
+  if (configValue) {
+    return configValue;
+  }
+  return secrets.get("lighthouse.explorerApiKey.routescan");
 }
 
 function mapScanMode(mode: "workspaceLimited" | "userAll" | "singleChain") {

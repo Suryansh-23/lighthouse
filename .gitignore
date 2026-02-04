@@ -5,3 +5,4 @@ coverage/
 .vscode-test/
 .DS_Store
 *.vsix
+routescan*.mhtml

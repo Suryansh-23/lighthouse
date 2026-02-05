@@ -13,7 +13,8 @@ export class RateLimiter {
   }
 
   async acquire(signal?: AbortSignal): Promise<void> {
-    while (true) {
+    let attempts = 0;
+    while (attempts < 10_000) {
       if (signal?.aborted) {
         throw new Error("aborted");
       }
@@ -25,8 +26,9 @@ export class RateLimiter {
         return;
       }
 
-      const waitMs = this.nextTokenDelay(now);
+      const waitMs = this.nextTokenDelay();
       await delay(waitMs, signal);
+      attempts += 1;
     }
   }
 
@@ -44,7 +46,7 @@ export class RateLimiter {
     }
   }
 
-  private nextTokenDelay(now: number) {
+  private nextTokenDelay() {
     const refillPerMs = this.config.maxRequests / this.config.perMs;
     if (refillPerMs <= 0) {
       return this.config.perMs;

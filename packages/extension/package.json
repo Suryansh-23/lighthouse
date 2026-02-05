@@ -1,10 +1,9 @@
 {
-  "name": "lighthouse-extension",
+  "name": "lighthouse",
   "displayName": "Lighthouse",
   "description": "EVM address intelligence for VS Code",
   "version": "0.0.1",
-  "private": true,
-  "publisher": "lighthouse",
+  "publisher": "suri",
   "engines": {
     "vscode": "^1.88.0"
   },

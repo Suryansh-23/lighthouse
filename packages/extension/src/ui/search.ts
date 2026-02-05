@@ -8,7 +8,6 @@ import {
   resolveChains,
   RoutescanClient,
   normalizeAddress,
-  type ChainConfig,
   resolveNetworkId,
   DefiLlamaClient,
 } from "@lighthouse/engine";
@@ -1038,7 +1037,10 @@ function tokenSignalBoost(item: SearchResultItem): number {
 function countSources(item: SearchResultItem): number {
   let sources = 0;
   const hasBlockscoutData =
-    item.isVerified || Boolean(item.exchangeRate) || Boolean(item.marketCap) || Boolean(item.hasLogo);
+    item.isVerified ||
+    Boolean(item.exchangeRate) ||
+    Boolean(item.marketCap) ||
+    Boolean(item.hasLogo);
   if (hasBlockscoutData) {
     sources += 1;
   }
@@ -1090,16 +1092,6 @@ function mapRoutescanTransaction(
     copyValue: txHash,
     score: 900,
     source: "routescan",
-  };
-}
-
-function buildRoutescanChain(chain: SearchChain): ChainConfig {
-  return {
-    chainId: chain.chainId,
-    name: chain.name,
-    nativeSymbol: "",
-    rpcs: [],
-    explorer: { kind: "routescan", baseUrl: "https://routescan.io" },
   };
 }
 

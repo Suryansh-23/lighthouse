@@ -4,7 +4,7 @@ import * as vscode from "vscode";
 
 suite("Extension activation", () => {
   test("registers lighthouse commands", async () => {
-    const extension = vscode.extensions.getExtension("lighthouse.lighthouse-extension");
+    const extension = vscode.extensions.getExtension("suri.lighthouse");
     if (extension) {
       await extension.activate();
     }

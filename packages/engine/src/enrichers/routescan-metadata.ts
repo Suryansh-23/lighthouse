@@ -9,7 +9,7 @@ export class RoutescanMetadataEnricher implements Enricher {
 
   constructor(private readonly client: RoutescanClient) {}
 
-  supports(ctx: EnrichmentContext): boolean {
+  supports(): boolean {
     return true;
   }
 

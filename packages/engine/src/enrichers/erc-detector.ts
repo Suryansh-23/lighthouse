@@ -167,7 +167,7 @@ function normalizeTokenString(value?: string): string | undefined {
   if (!value) {
     return undefined;
   }
-  const trimmed = value.replace(/\u0000/g, "").trim();
+  const trimmed = value.replace(/\0/g, "").trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
@@ -246,7 +246,7 @@ async function callBytes32String(
     if (typeof value !== "string") {
       return undefined;
     }
-    const text = hexToString(value as Hex, { size: 32 }).replace(/\u0000/g, "");
+    const text = hexToString(value as Hex, { size: 32 }).replace(/\0/g, "");
     return text.trim() || undefined;
   } catch {
     return undefined;

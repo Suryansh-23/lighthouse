@@ -66,8 +66,6 @@ importers:
 
   packages/shared: {}
 
-  packages/webview: {}
-
 packages:
 
   '@adraffy/ens-normalize@1.11.1':

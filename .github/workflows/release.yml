@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install
+        run: pnpm install
+      - name: Lint
+        run: pnpm lint
+      - name: Test
+        run: pnpm test
+      - name: Build
+        run: pnpm build
+      - name: Validate package version
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          CURRENT=$(node -p "require('./packages/extension/package.json').version")
+          if [ "$VERSION" != "$CURRENT" ]; then
+            echo "Tag version $VERSION does not match packages/extension/package.json $CURRENT"
+            exit 1
+          fi
+      - name: Package VSIX
+        run: pnpm extension:package
+      - name: Publish to VS Code Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: pnpm --filter lighthouse-extension exec vsce publish --pat "$VSCE_PAT"
+      - name: Publish to Open VSX
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: pnpm --filter lighthouse-extension exec ovsx publish --pat "$OVSX_PAT"
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --generate-notes \
+            packages/extension/dist/lighthouse.vsix

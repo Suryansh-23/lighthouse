@@ -17,6 +17,7 @@
     "extension:lint": "pnpm --filter lighthouse-extension run lint",
     "extension:test": "pnpm --filter lighthouse-extension run test",
     "extension:package": "pnpm --filter lighthouse-extension exec vsce package --out packages/extension/dist/lighthouse.vsix",
+    "extension:publish": "pnpm --filter lighthouse-extension exec vsce publish",
     "extension:install": "pnpm extension:package && code --install-extension packages/extension/dist/lighthouse.vsix --force",
     "extension:dev": "code --extensionDevelopmentPath=packages/extension"
   },

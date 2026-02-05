@@ -61,6 +61,45 @@ pnpm extension:install
 
 The install command uses `code --install-extension` under the hood.
 
+## Release and distribution
+
+Lighthouse is released via tag-based GitHub Actions workflows. We follow the
+standard OSS pattern: bump the extension version in a PR, merge it, then tag
+the merge commit.
+
+### One-time setup
+
+Configure the following GitHub Actions secrets:
+
+- `VSCE_PAT` for VS Code Marketplace publishing
+- `OVSX_PAT` for Open VSX publishing
+
+### Release steps
+
+1. Update `packages/extension/package.json` version (semver).
+2. Merge the PR to `main`.
+3. Create and push a tag that matches the version:
+
+```bash
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+The release workflow will:
+
+- Lint, test, and build
+- Package the VSIX
+- Publish to VS Code Marketplace and Open VSX
+- Create a GitHub Release with auto-generated notes and attach the VSIX
+
+## Publishing to marketplaces
+
+Marketplace identity:
+
+- Publisher: `suri`
+- Extension name: `lighthouse`
+- Extension ID: `suri.lighthouse`
+
 ## Commands
 
 - `Open Explorer`

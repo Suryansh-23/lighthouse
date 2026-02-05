@@ -2,7 +2,16 @@ import * as vscode from "vscode";
 
 import type { ChainId } from "@lighthouse/shared";
 
-import { buildExplorerEntityUrl, getChainById, resolveChains } from "@lighthouse/engine";
+import {
+  buildExplorerEntityUrl,
+  getChainById,
+  resolveChains,
+  RoutescanClient,
+  normalizeAddress,
+  type ChainConfig,
+  resolveNetworkId,
+  DefiLlamaClient,
+} from "@lighthouse/engine";
 import { getSettings } from "../core/settings";
 
 type SearchEntityType = "address" | "tx" | "block";
@@ -26,6 +35,7 @@ interface SearchResultItem {
   entityValue: string;
   copyValue?: string;
   score: number;
+  baseScore?: number;
   marketCap?: number;
   priority?: number;
   reputation?: string;
@@ -34,6 +44,10 @@ interface SearchResultItem {
   exchangeRate?: number;
   isVerified?: boolean;
   tokenType?: string;
+  source?: "blockscout" | "routescan";
+  hasDefiLlamaPrice?: boolean;
+  hasLogo?: boolean;
+  hasRoutescanMetadata?: boolean;
 }
 
 interface SearchResponse {
@@ -116,9 +130,14 @@ class SearchQuickPick {
   private resultsByChain = new Map<ChainId, SearchResultItem[]>();
   private nextPageByChain = new Map<ChainId, Record<string, string | number | null>>();
   private searchChains: SearchChain[] = [];
+  private routescanClient: RoutescanClient | undefined;
+  private readonly directCache = new Map<string, SearchResultItem>();
+  private readonly enhancedTokens = new Set<string>();
+  private tokenEnhanceId = 0;
   private abortController: AbortController | undefined;
   private debounceHandle: NodeJS.Timeout | undefined;
   private quickPick: vscode.QuickPick<SearchQuickPickItem> | undefined;
+  private defillamaClient = new DefiLlamaClient();
 
   async open() {
     this.quickPick = vscode.window.createQuickPick<SearchQuickPickItem>();
@@ -134,6 +153,7 @@ class SearchQuickPick {
     this.quickPick.onDidHide(() => this.dispose());
 
     this.syncChains();
+    this.syncRoutescanClient();
     this.quickPick.show();
   }
 
@@ -158,6 +178,9 @@ class SearchQuickPick {
     const token = this.requestId;
     this.resultsByChain.clear();
     this.nextPageByChain.clear();
+    this.directCache.clear();
+    this.enhancedTokens.clear();
+    this.tokenEnhanceId += 1;
     this.abortController?.abort();
     this.abortController = new AbortController();
 
@@ -167,27 +190,32 @@ class SearchQuickPick {
     }
 
     this.setLoading(true);
-    await runWithLimit(this.searchChains, 3, async (chain) => {
-      const response = await fetchSearch(
-        chain,
-        this.currentQuery,
-        undefined,
-        this.abortController?.signal,
-      );
-      if (token !== this.requestId) {
-        return;
-      }
-      if (response) {
-        const mapped = response.items
-          .map((item) => toSearchItem(chain, item, this.currentQuery))
-          .filter(isSearchResultItem);
-        this.resultsByChain.set(chain.chainId, sortResults(mapped, this.currentQuery));
-        if (response.next_page_params && hasNextParams(response.next_page_params)) {
-          this.nextPageByChain.set(chain.chainId, response.next_page_params);
+    const blockscoutChains = this.searchChains.filter((chain) => Boolean(chain.apiBaseUrl));
+    await Promise.all([
+      this.runDirectLookups(token),
+      runWithLimit(blockscoutChains, 3, async (chain) => {
+        const response = await fetchSearch(
+          chain,
+          this.currentQuery,
+          undefined,
+          this.abortController?.signal,
+        );
+        if (token !== this.requestId) {
+          return;
         }
-      }
-      this.updateItems(this.buildItems());
-    });
+        if (response) {
+          let mapped = response.items
+            .map((item) => toSearchItem(chain, item, this.currentQuery))
+            .filter(isSearchResultItem);
+          mapped = await this.enhanceTokenScores(mapped, token);
+          this.resultsByChain.set(chain.chainId, sortResults(mapped, this.currentQuery));
+          if (response.next_page_params && hasNextParams(response.next_page_params)) {
+            this.nextPageByChain.set(chain.chainId, response.next_page_params);
+          }
+        }
+        this.updateItems(this.buildItems());
+      }),
+    ]);
     this.setLoading(false);
   }
 
@@ -216,9 +244,10 @@ class SearchQuickPick {
       }
       if (response) {
         const existing = this.resultsByChain.get(chain.chainId) ?? [];
-        const nextItems = response.items
+        let nextItems = response.items
           .map((item) => toSearchItem(chain, item, this.currentQuery))
           .filter(isSearchResultItem);
+        nextItems = await this.enhanceTokenScores(nextItems, token);
         this.resultsByChain.set(
           chain.chainId,
           sortResults([...existing, ...nextItems], this.currentQuery),
@@ -317,8 +346,9 @@ class SearchQuickPick {
   }
 
   private buildItems(): SearchQuickPickItem[] {
-    const items = interleaveResults(this.searchChains, this.resultsByChain, 80).map((result) =>
-      toQuickPickItem(result),
+    const direct = Array.from(this.directCache.values());
+    const items = interleaveResults(this.searchChains, this.resultsByChain, 80, direct).map(
+      (result) => toQuickPickItem(result),
     );
     if (items.length === 0) {
       return [createEmptyItem("No results")];
@@ -336,13 +366,183 @@ class SearchQuickPick {
 
   private syncChains() {
     const settings = getSettings();
-    this.searchChains = resolveChains(settings.chains)
-      .filter((chain) => Boolean(BLOCKSCOUT_APIS[chain.chainId]))
-      .map((chain) => ({
-        chainId: chain.chainId,
-        name: chain.name,
-        apiBaseUrl: BLOCKSCOUT_APIS[chain.chainId],
-      }));
+    this.searchChains = resolveChains(settings.chains).map((chain) => ({
+      chainId: chain.chainId,
+      name: chain.name,
+      apiBaseUrl: BLOCKSCOUT_APIS[chain.chainId] ?? "",
+    }));
+  }
+
+  private syncRoutescanClient() {
+    const settings = getSettings();
+    const apiKey = settings.explorer.apiKeys.routescan || undefined;
+    this.routescanClient = new RoutescanClient({ apiKey });
+    this.defillamaClient = new DefiLlamaClient();
+  }
+
+  private async runDirectLookups(token: number) {
+    const query = this.currentQuery;
+    if (!query || !this.routescanClient) {
+      return;
+    }
+    const normalizedAddress = normalizeAddress(query);
+    if (normalizedAddress) {
+      await this.resolveAddressDirect(token, normalizedAddress);
+      return;
+    }
+    if (isLikelyTxHash(query)) {
+      await this.resolveTransactionDirect(token, query);
+    }
+  }
+
+  private async resolveAddressDirect(token: number, address: string) {
+    const settings = getSettings();
+    const networkIds = getNetworkIds(settings.chains);
+    const tasks = networkIds.map(async (networkId) => {
+      if (token !== this.requestId) {
+        return;
+      }
+      const result = await this.routescanClient?.listAddresses(
+        networkId,
+        "all",
+        { ids: address, limit: 5 },
+        this.abortController?.signal,
+      );
+      if (!result?.items || token !== this.requestId) {
+        return;
+      }
+      for (const item of result.items) {
+        const chainId = toChainId(item.chainId);
+        if (!chainId) {
+          continue;
+        }
+        const chainName = getChainById(chainId, settings.chains)?.name ?? `Chain ${chainId}`;
+        const mapped = mapRoutescanAddress({ chainId, name: chainName, apiBaseUrl: "" }, address);
+        if (!mapped) {
+          continue;
+        }
+        this.directCache.set(mapped.id, mapped);
+      }
+      this.updateItems(this.buildItems());
+    });
+
+    await Promise.all(tasks);
+  }
+
+  private async resolveTransactionDirect(token: number, txHash: string) {
+    const settings = getSettings();
+    const networkIds = getNetworkIds(settings.chains);
+    const tasks = networkIds.map(async (networkId) => {
+      if (token !== this.requestId) {
+        return;
+      }
+      const result = await this.routescanClient?.getTransactionAll(
+        networkId,
+        txHash,
+        this.abortController?.signal,
+      );
+      if (!result || token !== this.requestId) {
+        return;
+      }
+      const chainId = toChainId(result.chainId);
+      const chainName = chainId
+        ? (getChainById(chainId, settings.chains)?.name ?? `Chain ${chainId}`)
+        : "Unknown chain";
+      const chain = chainId
+        ? { chainId, name: chainName, apiBaseUrl: "" }
+        : { chainId: 0, name: chainName, apiBaseUrl: "" };
+      const item = mapRoutescanTransaction(chain, txHash, result);
+      if (!item) {
+        return;
+      }
+      this.directCache.set(item.id, item);
+      this.updateItems(this.buildItems());
+    });
+
+    await Promise.all(tasks);
+  }
+
+  private async enhanceTokenScores(items: SearchResultItem[], token: number) {
+    const tokens = items.filter((item) => item.kind === "token");
+    if (tokens.length === 0) {
+      return items;
+    }
+
+    const settings = getSettings();
+    const chainMap = new Map(
+      resolveChains(settings.chains).map((chain) => [chain.chainId, chain] as const),
+    );
+
+    const runId = this.tokenEnhanceId;
+    const candidates = tokens
+      .filter((item) => !this.enhancedTokens.has(item.id))
+      .sort((a, b) => (b.baseScore ?? b.score) - (a.baseScore ?? a.score))
+      .slice(0, 8);
+
+    await runWithLimit(candidates, 2, async (item) => {
+      if (token !== this.requestId || runId !== this.tokenEnhanceId) {
+        return;
+      }
+      const chain = chainMap.get(item.chainId);
+      if (!chain || !chain.defillamaChainKey) {
+        return;
+      }
+      const result = await this.defillamaClient.getPrice(chain.defillamaChainKey, item.entityValue);
+      if (!result?.price) {
+        return;
+      }
+      item.hasDefiLlamaPrice = true;
+      if (item.exchangeRate === undefined) {
+        item.exchangeRate = result.price;
+      }
+    });
+
+    await runWithLimit(candidates, 2, async (item) => {
+      if (token !== this.requestId || runId !== this.tokenEnhanceId) {
+        return;
+      }
+      if (!this.routescanClient) {
+        return;
+      }
+      const chain = chainMap.get(item.chainId);
+      if (!chain) {
+        return;
+      }
+      const metadata = await this.routescanClient.getContractMetadata(
+        chain,
+        item.entityValue as never,
+        this.abortController?.signal,
+      );
+      if (!metadata) {
+        return;
+      }
+      item.hasRoutescanMetadata = true;
+      if (metadata.verified) {
+        item.isVerified = item.isVerified ?? true;
+      }
+      if (metadata.contractName && !item.name) {
+        item.name = metadata.contractName;
+      }
+    });
+
+    for (const item of candidates) {
+      this.enhancedTokens.add(item.id);
+    }
+
+    const updated = items.map((item) => {
+      if (item.kind !== "token") {
+        return item;
+      }
+      const base = item.baseScore ?? item.score;
+      const boosted = base + tokenSignalBoost(item);
+      return { ...item, score: boosted };
+    });
+
+    if (token === this.requestId && runId === this.tokenEnhanceId) {
+      this.updateItems(this.buildItems());
+    }
+
+    return updated;
   }
 }
 
@@ -352,6 +552,9 @@ async function fetchSearch(
   pageParams?: Record<string, string | number | null>,
   signal?: AbortSignal,
 ): Promise<SearchResponse | undefined> {
+  if (!chain.apiBaseUrl) {
+    return undefined;
+  }
   const url = new URL(`${chain.apiBaseUrl}/search`);
   url.searchParams.set("q", query);
   if (pageParams) {
@@ -397,6 +600,20 @@ function toSearchItem(
       item.symbol && item.name && item.symbol !== item.name
         ? `${item.symbol} - ${item.name}`
         : item.symbol || item.name || "Token";
+    const hasLogo = Boolean(item.icon_url);
+    const score = scoreItem(
+      {
+        kind: item.type,
+        title: item.name || item.symbol || "",
+        symbol: item.symbol,
+        name: item.name,
+        priority: item.priority,
+        marketCap,
+        exchangeRate,
+        isVerified: item.is_smart_contract_verified,
+      },
+      query,
+    );
     return {
       id: `${chain.chainId}:${item.type}:${item.address_hash}`,
       chainId: chain.chainId,
@@ -409,19 +626,8 @@ function toSearchItem(
       entityType: "address",
       entityValue: item.address_hash,
       copyValue: item.address_hash,
-      score: scoreItem(
-        {
-          kind: item.type,
-          title: item.name || item.symbol || "",
-          symbol: item.symbol,
-          name: item.name,
-          priority: item.priority,
-          marketCap,
-          exchangeRate,
-          isVerified: item.is_smart_contract_verified,
-        },
-        query,
-      ),
+      score,
+      baseScore: score,
       marketCap,
       priority: item.priority,
       reputation: item.reputation ?? undefined,
@@ -430,6 +636,7 @@ function toSearchItem(
       exchangeRate,
       isVerified: item.is_smart_contract_verified,
       tokenType: item.token_type,
+      hasLogo,
     };
   }
 
@@ -536,15 +743,31 @@ function interleaveResults(
   chains: SearchChain[],
   resultsByChain: Map<ChainId, SearchResultItem[]>,
   limit: number,
+  direct: SearchResultItem[] = [],
 ): SearchResultItem[] {
   const results: SearchResultItem[] = [];
+  const seen = new Set<string>();
+  for (const item of direct) {
+    if (results.length >= limit) {
+      break;
+    }
+    if (seen.has(item.id)) {
+      continue;
+    }
+    results.push(item);
+    seen.add(item.id);
+  }
   let index = 0;
   while (results.length < limit) {
     let added = false;
     for (const chain of chains) {
       const items = resultsByChain.get(chain.chainId) ?? [];
       if (index < items.length) {
-        results.push(items[index]);
+        const item = items[index];
+        if (!seen.has(item.id)) {
+          results.push(item);
+          seen.add(item.id);
+        }
         added = true;
         if (results.length >= limit) {
           break;
@@ -631,6 +854,32 @@ function sortResults(items: SearchResultItem[], query: string): SearchResultItem
   return [...items].sort((a, b) => {
     if (a.score !== b.score) {
       return b.score - a.score;
+    }
+    if (a.kind === "token" && b.kind === "token") {
+      const aVerified = a.isVerified ? 1 : 0;
+      const bVerified = b.isVerified ? 1 : 0;
+      if (aVerified !== bVerified) {
+        return bVerified - aVerified;
+      }
+      const aDefi = a.hasDefiLlamaPrice ? 1 : 0;
+      const bDefi = b.hasDefiLlamaPrice ? 1 : 0;
+      if (aDefi !== bDefi) {
+        return bDefi - aDefi;
+      }
+      const aMcap = a.marketCap ?? 0;
+      const bMcap = b.marketCap ?? 0;
+      if (aMcap !== bMcap) {
+        return bMcap - aMcap;
+      }
+      const aLogo = a.hasLogo ? 1 : 0;
+      const bLogo = b.hasLogo ? 1 : 0;
+      if (aLogo !== bLogo) {
+        return bLogo - aLogo;
+      }
+    }
+    if (a.source !== b.source) {
+      if (a.source === "routescan") return -1;
+      if (b.source === "routescan") return 1;
     }
     const aMatch = exactMatchScore(a, normalized);
     const bMatch = exactMatchScore(b, normalized);
@@ -763,7 +1012,114 @@ function buildDetail(item: SearchResultItem): string | undefined {
   if (item.copyValue && item.kind !== "token") {
     parts.push(`Address ${item.copyValue}`);
   }
+  if (item.source === "routescan") {
+    parts.push("Routescan");
+  }
   return parts.length > 0 ? parts.join(" | ") : undefined;
+}
+
+function tokenSignalBoost(item: SearchResultItem): number {
+  if (item.kind !== "token") {
+    return 0;
+  }
+  let boost = 0;
+  if (item.isVerified) boost += 18;
+  if (item.hasDefiLlamaPrice) boost += 16;
+  if (item.marketCap && item.marketCap > 0) boost += 12;
+  if (item.hasLogo) boost += 8;
+  if (item.hasRoutescanMetadata) boost += 6;
+
+  const sourceCount = countSources(item);
+  if (sourceCount >= 2) boost += 12;
+  if (sourceCount >= 3) boost += 12;
+  return boost;
+}
+
+function countSources(item: SearchResultItem): number {
+  let sources = 0;
+  const hasBlockscoutData =
+    item.isVerified || Boolean(item.exchangeRate) || Boolean(item.marketCap) || Boolean(item.hasLogo);
+  if (hasBlockscoutData) {
+    sources += 1;
+  }
+  if (item.hasDefiLlamaPrice) {
+    sources += 1;
+  }
+  if (item.hasRoutescanMetadata) {
+    sources += 1;
+  }
+  return sources;
+}
+
+function isLikelyTxHash(value: string): boolean {
+  return /^0x[a-fA-F0-9]{64}$/.test(value);
+}
+
+function mapRoutescanAddress(chain: SearchChain, address: string): SearchResultItem | undefined {
+  return {
+    id: `${chain.chainId}:routescan:address:${address}`,
+    chainId: chain.chainId,
+    chainName: chain.name,
+    kind: "address",
+    title: shortenHash(address),
+    subtitle: address,
+    badge: "Address",
+    entityType: "address",
+    entityValue: address,
+    copyValue: address,
+    score: 1200,
+    source: "routescan",
+  };
+}
+
+function mapRoutescanTransaction(
+  chain: SearchChain,
+  txHash: string,
+  data: { timestamp?: string },
+): SearchResultItem | undefined {
+  return {
+    id: `${chain.chainId}:routescan:tx:${txHash}`,
+    chainId: chain.chainId,
+    chainName: chain.name,
+    kind: "transaction",
+    title: `Tx ${shortenHash(txHash)}`,
+    subtitle: data.timestamp ?? "",
+    badge: "Transaction",
+    entityType: "tx",
+    entityValue: txHash,
+    copyValue: txHash,
+    score: 900,
+    source: "routescan",
+  };
+}
+
+function buildRoutescanChain(chain: SearchChain): ChainConfig {
+  return {
+    chainId: chain.chainId,
+    name: chain.name,
+    nativeSymbol: "",
+    rpcs: [],
+    explorer: { kind: "routescan", baseUrl: "https://routescan.io" },
+  };
+}
+
+function getNetworkIds(
+  settings: ReturnType<typeof getSettings>["chains"],
+): Array<ReturnType<typeof resolveNetworkId>> {
+  const chains = resolveChains(settings);
+  const ids = new Set<ReturnType<typeof resolveNetworkId>>();
+  for (const chain of chains) {
+    ids.add(resolveNetworkId(chain));
+  }
+  return Array.from(ids);
+}
+
+function toChainId(value?: string): ChainId | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function iconForKind(kind: string): vscode.ThemeIcon {
